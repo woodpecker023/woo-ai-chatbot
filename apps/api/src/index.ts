@@ -30,10 +30,12 @@ const server = Fastify({
 // Security and middleware
 await server.register(helmet, {
   contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
 });
 
 await server.register(cors, {
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', '*'],
+  origin: true, // Allow all origins for widget embedding
   credentials: true,
 });
 
