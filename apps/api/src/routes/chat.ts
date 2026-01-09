@@ -75,7 +75,10 @@ export async function chatRoutes(server: FastifyInstance) {
         let toolCalls: Array<OpenAI.Chat.ChatCompletionMessageToolCall> = [];
         let products: Array<unknown> = [];
 
-        // Set up streaming response
+        // Set up streaming response with CORS headers
+        const origin = request.headers.origin || '*';
+        reply.header('Access-Control-Allow-Origin', origin);
+        reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Content-Type', 'text/event-stream');
         reply.header('Cache-Control', 'no-cache');
         reply.header('Connection', 'keep-alive');
