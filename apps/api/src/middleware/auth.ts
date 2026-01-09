@@ -109,6 +109,37 @@ export async function validateStoreOwnership(
 }
 
 /**
+ * Middleware to authenticate widget requests by storeId
+ * Used for chat endpoint where API key would be exposed in client code
+ */
+export async function authenticateWidgetRequest(
+  request: FastifyRequest<{ Body: { storeId: string } }>,
+  reply: FastifyReply
+) {
+  try {
+    const storeId = request.body?.storeId;
+
+    if (!storeId) {
+      return reply.status(400).send({ error: 'Bad Request: Missing storeId' });
+    }
+
+    const db = getDbClient();
+    const store = await db.query.stores.findFirst({
+      where: eq(stores.id, storeId),
+      columns: { id: true, ownerId: true },
+    });
+
+    if (!store) {
+      return reply.status(404).send({ error: 'Store not found' });
+    }
+
+    request.store = store;
+  } catch (error) {
+    return reply.status(500).send({ error: 'Internal server error' });
+  }
+}
+
+/**
  * Generate JWT token
  */
 export function generateToken(user: AuthUser): string {

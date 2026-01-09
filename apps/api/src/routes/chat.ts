@@ -3,7 +3,7 @@ import { getDbClient } from '@woo-ai/database';
 import { chatSessions, chatMessages, usageMetrics } from '@woo-ai/database';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { chatRequestSchema, getCurrentMonthKey } from '@woo-ai/shared';
-import { authenticateApiKey } from '../middleware/auth.js';
+import { authenticateWidgetRequest } from '../middleware/auth.js';
 import { getChatCompletion, AI_TOOLS } from '../services/openai.js';
 import { handleSearchProducts } from '../tools/search-products.js';
 import { handleSearchFaq } from '../tools/search-faq.js';
@@ -14,16 +14,11 @@ import type OpenAI from 'openai';
 
 export async function chatRoutes(server: FastifyInstance) {
   server.post('/', {
-    preHandler: [authenticateApiKey],
+    preHandler: [authenticateWidgetRequest],
     handler: async (request, reply) => {
       try {
         const body = chatRequestSchema.parse(request.body);
         const storeId = request.store!.id;
-
-        // Validate storeId matches authenticated store
-        if (body.storeId !== storeId) {
-          return reply.status(403).send({ error: 'Forbidden: Store ID mismatch' });
-        }
 
         const db = getDbClient();
 
