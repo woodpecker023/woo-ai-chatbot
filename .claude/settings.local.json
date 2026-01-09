@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm:*)",
+      "Bash(ping:*)",
+      "Bash(nslookup:*)",
+      "Bash(timeout 3 tail:*)",
+      "Bash(exit 0)",
+      "Bash(timeout 5 tail:*)",
+      "Bash(node-gyp rebuild)",
+      "Bash(npx node-gyp rebuild)",
+      "Bash(timeout 10 tail:*)",
+      "Bash(curl:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout:*)",
+      "Bash(cat:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
