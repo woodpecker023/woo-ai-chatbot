@@ -1,5 +1,5 @@
 import { pgTable, timestamp, uuid, integer, date, index, unique } from 'drizzle-orm/pg-core';
-import { stores } from './stores';
+import { stores } from './stores.js';
 
 export const usageMetrics = pgTable('usage_metrics', {
   id: uuid('id').defaultRandom().primaryKey(),
