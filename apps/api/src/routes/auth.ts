@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
 import { getDbClient } from '@woo-ai/database';
-import { users, stores } from '@woo-ai/database';
+import { users } from '@woo-ai/database';
 import { eq } from 'drizzle-orm';
 import { registerSchema, loginSchema } from '@woo-ai/shared';
 import { generateToken, authenticateUser } from '../middleware/auth.js';
@@ -143,11 +143,19 @@ export async function authRoutes(server: FastifyInstance) {
       const db = getDbClient();
 
       // Check if user exists
-      let user = await db.query.users.findFirst({
+      const existingUser = await db.query.users.findFirst({
         where: eq(users.email, payload.email),
       });
 
-      if (!user) {
+      let userId: string;
+      let userEmail: string;
+      let userName: string;
+
+      if (existingUser) {
+        userId = existingUser.id;
+        userEmail = existingUser.email;
+        userName = existingUser.name;
+      } else {
         // Create new user
         const [newUser] = await db
           .insert(users)
@@ -158,20 +166,22 @@ export async function authRoutes(server: FastifyInstance) {
           })
           .returning({ id: users.id, email: users.email, name: users.name });
 
-        user = newUser;
+        userId = newUser.id;
+        userEmail = newUser.email;
+        userName = newUser.name;
       }
 
       // Generate token
       const token = generateToken({
-        userId: user.id,
-        email: user.email,
+        userId,
+        email: userEmail,
       });
 
       return {
         user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
+          id: userId,
+          email: userEmail,
+          name: userName,
         },
         token,
       };
@@ -300,7 +310,7 @@ export async function authRoutes(server: FastifyInstance) {
   // Delete account
   server.delete('/account', {
     preHandler: [authenticateUser],
-    handler: async (request, reply) => {
+    handler: async (request) => {
       const db = getDbClient();
 
       // Delete user (cascade will delete stores, products, etc.)
