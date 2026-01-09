@@ -1,5 +1,8 @@
 import * as dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
+// Load .env file in development (Railway sets env vars directly in production)
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: '../../.env' });
+}
 
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -84,7 +87,8 @@ server.setErrorHandler((error, _request, reply) => {
 // Start server
 const start = async () => {
   try {
-    const port = parseInt(process.env.API_PORT || '3001', 10);
+    // Railway provides PORT, local dev uses API_PORT
+    const port = parseInt(process.env.PORT || process.env.API_PORT || '3001', 10);
     await server.listen({ port, host: '0.0.0.0' });
     console.log(`🚀 API server running on http://localhost:${port}`);
   } catch (err) {
