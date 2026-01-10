@@ -37,9 +37,10 @@ export const updateStoreSchema = z.object({
     position: z.enum(['left', 'right']).optional(),
     greeting: z.string().max(255).optional(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+    isActive: z.boolean().optional(), // Enable/disable chatbot
   }).optional(),
   chatbotConfig: z.object({
-    customInstructions: z.string().max(5000).optional(),
+    customInstructions: z.string().max(100000).optional(), // Allow up to 100k chars for detailed prompts
   }).optional(),
 });
 
@@ -72,9 +73,10 @@ export const widgetConfigSchema = z.object({
   position: z.enum(['left', 'right']).optional(),
   greeting: z.string().max(255).optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  isActive: z.boolean().optional(), // Enable/disable chatbot
 });
 
 // Chatbot Config Schema
 export const chatbotConfigSchema = z.object({
-  customInstructions: z.string().max(5000).optional(),
+  customInstructions: z.string().max(100000).optional(), // Allow up to 100k chars for detailed prompts
 });

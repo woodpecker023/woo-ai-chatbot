@@ -206,6 +206,25 @@ export const api = {
     request<{ url: string }>(`/stores/${storeId}/billing-portal`, {
       method: 'POST',
     }),
+
+  // Analytics
+  getAnalyticsOverview: (storeId: string) =>
+    request<AnalyticsOverview>(`/stores/${storeId}/analytics`),
+
+  getMessagesByDay: (storeId: string, days: number = 30) =>
+    request<{ data: DailyMessageCount[]; days: number }>(`/stores/${storeId}/analytics/messages-by-day?days=${days}`),
+
+  getPopularQueries: (storeId: string) =>
+    request<PopularQueriesData>(`/stores/${storeId}/analytics/popular-queries`),
+
+  getPeakHours: (storeId: string, days: number = 30) =>
+    request<PeakHoursData>(`/stores/${storeId}/analytics/peak-hours?days=${days}`),
+
+  // Installation Verification
+  verifyInstall: (storeId: string) =>
+    request<VerifyInstallResult>(`/stores/${storeId}/verify-install`, {
+      method: 'POST',
+    }),
 }
 
 // Types
@@ -225,6 +244,7 @@ export interface WidgetConfig {
   primaryColor: string
   position: 'left' | 'right'
   greeting: string
+  isActive?: boolean
 }
 
 export interface ChatbotConfig {
@@ -319,4 +339,46 @@ export interface Document {
   errorMessage: string | null
   createdAt: string
   updatedAt: string
+}
+
+// Analytics Types
+export interface AnalyticsOverview {
+  overview: {
+    totalSessions: number
+    totalMessages: number
+    recentSessions: number
+    recentMessages: number
+    avgMessagesPerSession: number
+  }
+}
+
+export interface DailyMessageCount {
+  date: string
+  count: number
+}
+
+export interface PopularQueriesData {
+  topKeywords: { word: string; count: number }[]
+  recentQueries: string[]
+  totalQueries: number
+}
+
+export interface PeakHoursData {
+  hourlyData: { hour: number; count: number }[]
+  peakHour: number
+  peakHourCount: number
+  days: number
+}
+
+export type VerifyInstallStatus = 'installed' | 'not_found' | 'wrong_store_id' | 'unreachable' | 'timeout' | 'error' | 'no_domain'
+
+export interface VerifyInstallResult {
+  success: boolean
+  status: VerifyInstallStatus
+  message: string
+  domain?: string
+  details?: {
+    scriptFound: boolean
+    storeIdFound: boolean
+  }
 }

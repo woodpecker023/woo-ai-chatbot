@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   User,
   Lock,
@@ -19,7 +18,6 @@ import { cn } from '@/lib/utils'
 type Tab = 'profile' | 'security' | 'danger'
 
 export default function SettingsPage() {
-  const router = useRouter()
   const { logout } = useAuth()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)

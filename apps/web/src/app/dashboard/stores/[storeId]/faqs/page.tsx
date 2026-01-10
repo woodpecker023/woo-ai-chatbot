@@ -236,7 +236,7 @@ export default function KnowledgeBasePage({ params }: { params: { storeId: strin
     }
   }
 
-  function getFileIcon(fileType: string) {
+  function getFileIcon(_fileType: string) {
     return <File className="h-5 w-5 text-gray-400" />
   }
 

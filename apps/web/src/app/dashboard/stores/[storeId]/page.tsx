@@ -17,12 +17,22 @@ import {
   MessageSquare,
   Package,
   Bot,
+  BarChart3,
+  TrendingUp,
+  Clock,
+  Users,
+  MessageCircle,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Globe,
+  Power,
 } from 'lucide-react'
-import { api, ApiError, type Store, type WidgetConfig } from '@/lib/api'
+import { api, ApiError, type Store, type WidgetConfig, type AnalyticsOverview, type DailyMessageCount, type PopularQueriesData, type PeakHoursData, type VerifyInstallResult } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { UsageMeter } from '@/components/UsageMeter'
 
-type Tab = 'general' | 'widget' | 'chatbot' | 'api' | 'embed'
+type Tab = 'general' | 'widget' | 'chatbot' | 'api' | 'embed' | 'analytics'
 
 export default function StoreSettingsPage({ params }: { params: { storeId: string } }) {
   const { storeId } = params
@@ -48,12 +58,32 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     primaryColor: '#0ea5e9',
     position: 'right',
     greeting: 'Hi! How can I help you today?',
+    isActive: true,
   })
   const [customInstructions, setCustomInstructions] = useState('')
+
+  // Analytics state
+  const [analyticsOverview, setAnalyticsOverview] = useState<AnalyticsOverview | null>(null)
+  const [messagesByDay, setMessagesByDay] = useState<DailyMessageCount[]>([])
+  const [popularQueries, setPopularQueries] = useState<PopularQueriesData | null>(null)
+  const [peakHours, setPeakHours] = useState<PeakHoursData | null>(null)
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
+  const [messagesDaysFilter, setMessagesDaysFilter] = useState(30)
+  const [peakHoursDaysFilter, setPeakHoursDaysFilter] = useState(30)
+
+  // Verify install state
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [verifyResult, setVerifyResult] = useState<VerifyInstallResult | null>(null)
 
   useEffect(() => {
     loadStore()
   }, [storeId])
+
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      loadAnalytics()
+    }
+  }, [activeTab, storeId])
 
   async function loadStore() {
     try {
@@ -67,6 +97,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         primaryColor: '#0ea5e9',
         position: 'right',
         greeting: 'Hi! How can I help you today?',
+        isActive: true,
       }
       const storeConfig = response.store.widgetConfig || {}
       setWidgetConfig({
@@ -74,6 +105,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         primaryColor: storeConfig.primaryColor || defaultConfig.primaryColor,
         position: storeConfig.position || defaultConfig.position,
         greeting: storeConfig.greeting || defaultConfig.greeting,
+        isActive: storeConfig.isActive !== false, // Default to true if not set
       })
       // Load chatbot config
       setCustomInstructions(response.store.chatbotConfig?.customInstructions || '')
@@ -81,6 +113,65 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       setError('Failed to load store')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function loadAnalytics() {
+    if (isLoadingAnalytics) return
+    setIsLoadingAnalytics(true)
+
+    try {
+      const [overview, daily, queries, hours] = await Promise.all([
+        api.getAnalyticsOverview(storeId),
+        api.getMessagesByDay(storeId, messagesDaysFilter),
+        api.getPopularQueries(storeId),
+        api.getPeakHours(storeId, peakHoursDaysFilter),
+      ])
+
+      setAnalyticsOverview(overview)
+      setMessagesByDay(daily.data)
+      setPopularQueries(queries)
+      setPeakHours(hours)
+    } catch (err) {
+      console.error('Failed to load analytics:', err)
+    } finally {
+      setIsLoadingAnalytics(false)
+    }
+  }
+
+  async function loadMessagesByDay(days: number) {
+    try {
+      const daily = await api.getMessagesByDay(storeId, days)
+      setMessagesByDay(daily.data)
+    } catch (err) {
+      console.error('Failed to load messages by day:', err)
+    }
+  }
+
+  async function loadPeakHours(days: number) {
+    try {
+      const hours = await api.getPeakHours(storeId, days)
+      setPeakHours(hours)
+    } catch (err) {
+      console.error('Failed to load peak hours:', err)
+    }
+  }
+
+  async function handleVerifyInstall() {
+    setIsVerifying(true)
+    setVerifyResult(null)
+
+    try {
+      const result = await api.verifyInstall(storeId)
+      setVerifyResult(result)
+    } catch (err) {
+      setVerifyResult({
+        success: false,
+        status: 'error',
+        message: 'Failed to verify installation. Please try again.',
+      })
+    } finally {
+      setIsVerifying(false)
     }
   }
 
@@ -97,10 +188,14 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         wooConsumerSecret: wooConsumerSecret || undefined,
         widgetConfig,
         chatbotConfig: {
-          customInstructions: customInstructions || undefined,
+          customInstructions: customInstructions.trim() || undefined,
         },
       })
       setStore(response.store)
+      // Update local state from server response to confirm save
+      if (response.store.chatbotConfig?.customInstructions !== undefined) {
+        setCustomInstructions(response.store.chatbotConfig.customInstructions)
+      }
       setSuccess('Settings saved successfully')
       setWooConsumerKey('')
       setWooConsumerSecret('')
@@ -213,6 +308,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
 
   const tabs = [
     { id: 'general' as Tab, label: 'General', icon: Settings },
+    { id: 'analytics' as Tab, label: 'Analytics', icon: BarChart3 },
     { id: 'widget' as Tab, label: 'Widget', icon: Palette },
     { id: 'chatbot' as Tab, label: 'Chatbot', icon: Bot },
     { id: 'api' as Tab, label: 'API Key', icon: Key },
@@ -372,8 +468,309 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
           </div>
         )}
 
+        {activeTab === 'analytics' && (
+          <div className="space-y-6">
+            {isLoadingAnalytics ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+              </div>
+            ) : (
+              <>
+                {/* Overview Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                    <div className="flex items-center gap-2 text-blue-600 mb-2">
+                      <Users className="h-4 w-4" />
+                      <span className="text-xs font-medium uppercase tracking-wide">Total Sessions</span>
+                    </div>
+                    <p className="text-2xl font-bold text-blue-900">
+                      {analyticsOverview?.overview.totalSessions.toLocaleString() || 0}
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      {analyticsOverview?.overview.recentSessions || 0} last 30 days
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+                    <div className="flex items-center gap-2 text-green-600 mb-2">
+                      <MessageCircle className="h-4 w-4" />
+                      <span className="text-xs font-medium uppercase tracking-wide">Total Messages</span>
+                    </div>
+                    <p className="text-2xl font-bold text-green-900">
+                      {analyticsOverview?.overview.totalMessages.toLocaleString() || 0}
+                    </p>
+                    <p className="text-xs text-green-600 mt-1">
+                      {analyticsOverview?.overview.recentMessages || 0} last 30 days
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-center gap-2 text-purple-600 mb-2">
+                      <TrendingUp className="h-4 w-4" />
+                      <span className="text-xs font-medium uppercase tracking-wide">Avg per Session</span>
+                    </div>
+                    <p className="text-2xl font-bold text-purple-900">
+                      {analyticsOverview?.overview.avgMessagesPerSession || 0}
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1">
+                      messages per conversation
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+                    <div className="flex items-center gap-2 text-orange-600 mb-2">
+                      <Clock className="h-4 w-4" />
+                      <span className="text-xs font-medium uppercase tracking-wide">Peak Hour</span>
+                    </div>
+                    <p className="text-2xl font-bold text-orange-900">
+                      {peakHours ? `${peakHours.peakHour}:00` : '--'}
+                    </p>
+                    <p className="text-xs text-orange-600 mt-1">
+                      {peakHours?.peakHourCount || 0} messages at peak
+                    </p>
+                  </div>
+                </div>
+
+                {/* Messages Chart */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-gray-700">Messages Over Time</h3>
+                    <select
+                      value={messagesDaysFilter}
+                      onChange={(e) => {
+                        const days = parseInt(e.target.value, 10)
+                        setMessagesDaysFilter(days)
+                        loadMessagesByDay(days)
+                      }}
+                      className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    >
+                      <option value={7}>Last 7 days</option>
+                      <option value={14}>Last 14 days</option>
+                      <option value={30}>Last 30 days</option>
+                      <option value={60}>Last 60 days</option>
+                      <option value={90}>Last 90 days</option>
+                    </select>
+                  </div>
+                  {messagesByDay.length > 0 ? (
+                    <>
+                      <div className="h-40 flex items-end gap-px">
+                        {messagesByDay.map((day, i) => {
+                          const maxCount = Math.max(...messagesByDay.map(d => d.count), 1)
+                          const heightPercent = maxCount > 0 ? (day.count / maxCount) * 100 : 0
+                          return (
+                            <div
+                              key={i}
+                              className="flex-1 group relative flex flex-col justify-end h-full"
+                            >
+                              <div
+                                className={cn(
+                                  "w-full rounded-t transition-all cursor-pointer min-h-[2px]",
+                                  day.count > 0 ? "bg-primary-500 hover:bg-primary-600" : "bg-gray-200"
+                                )}
+                                style={{ height: `${Math.max(heightPercent, 2)}%` }}
+                              />
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 pointer-events-none">
+                                {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: {day.count} message{day.count !== 1 ? 's' : ''}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="flex justify-between mt-2 text-xs text-gray-500">
+                        <span>{messagesByDay[0]?.date ? new Date(messagesByDay[0].date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                        <span className="text-gray-400">
+                          Total: {messagesByDay.reduce((sum, d) => sum + d.count, 0)} messages
+                        </span>
+                        <span>Today</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-40 flex items-center justify-center text-sm text-gray-500">
+                      No message data available
+                    </div>
+                  )}
+                </div>
+
+                {/* Two Column Layout */}
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Popular Keywords */}
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">Top Keywords</h3>
+                    {popularQueries && popularQueries.topKeywords.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {popularQueries.topKeywords.slice(0, 15).map((kw, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"
+                          >
+                            {kw.word}
+                            <span className="text-gray-400">({kw.count})</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500">No data yet. Keywords will appear after customers start chatting.</p>
+                    )}
+                  </div>
+
+                  {/* Peak Hours */}
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium text-gray-700">Activity by Hour (UTC)</h3>
+                      <select
+                        value={peakHoursDaysFilter}
+                        onChange={(e) => {
+                          const days = parseInt(e.target.value, 10)
+                          setPeakHoursDaysFilter(days)
+                          loadPeakHours(days)
+                        }}
+                        className="text-xs border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      >
+                        <option value={7}>7 days</option>
+                        <option value={14}>14 days</option>
+                        <option value={30}>30 days</option>
+                        <option value={60}>60 days</option>
+                        <option value={90}>90 days</option>
+                      </select>
+                    </div>
+                    {peakHours && peakHours.hourlyData.length > 0 ? (
+                      <>
+                        <div className="flex items-end gap-px h-24">
+                          {peakHours.hourlyData.map((h, i) => {
+                            const maxCount = Math.max(...peakHours.hourlyData.map(x => x.count), 1)
+                            const heightPercent = maxCount > 0 ? (h.count / maxCount) * 100 : 0
+                            const isPeak = h.hour === peakHours.peakHour && h.count > 0
+                            return (
+                              <div
+                                key={i}
+                                className="flex-1 group relative flex flex-col justify-end h-full"
+                              >
+                                <div
+                                  className={cn(
+                                    "w-full rounded-t transition-all cursor-pointer min-h-[2px]",
+                                    h.count > 0
+                                      ? isPeak
+                                        ? "bg-orange-500 hover:bg-orange-600"
+                                        : "bg-primary-400 hover:bg-primary-500"
+                                      : "bg-gray-200"
+                                  )}
+                                  style={{ height: `${Math.max(heightPercent, 2)}%` }}
+                                />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 pointer-events-none">
+                                  {h.hour.toString().padStart(2, '0')}:00 - {h.count} message{h.count !== 1 ? 's' : ''}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div className="flex justify-between mt-2 text-xs text-gray-500">
+                          <span>12am</span>
+                          <span>6am</span>
+                          <span>12pm</span>
+                          <span>6pm</span>
+                          <span>11pm</span>
+                        </div>
+                        {peakHours.peakHourCount > 0 && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            Peak activity: {peakHours.peakHour.toString().padStart(2, '0')}:00 with {peakHours.peakHourCount} messages
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <div className="h-24 flex items-center justify-center text-sm text-gray-500">
+                        No hourly data available
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Recent Queries */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">Recent Customer Questions</h3>
+                  {popularQueries && popularQueries.recentQueries.length > 0 ? (
+                    <ul className="space-y-2">
+                      {popularQueries.recentQueries.map((query, i) => (
+                        <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
+                          <MessageCircle className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                          <span>{query}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-500">No recent questions yet.</p>
+                  )}
+                </div>
+
+                {/* Refresh Button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={loadAnalytics}
+                    disabled={isLoadingAnalytics}
+                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", isLoadingAnalytics && "animate-spin")} />
+                    Refresh Data
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {activeTab === 'widget' && (
           <div className="space-y-6">
+            {/* Chatbot Status Toggle */}
+            <div className={cn(
+              "rounded-lg border p-4",
+              widgetConfig.isActive !== false
+                ? "bg-green-50 border-green-200"
+                : "bg-gray-50 border-gray-200"
+            )}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "p-2 rounded-full",
+                    widgetConfig.isActive !== false
+                      ? "bg-green-100 text-green-600"
+                      : "bg-gray-200 text-gray-500"
+                  )}>
+                    <Power className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-900">
+                      Chatbot Status
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {widgetConfig.isActive !== false
+                        ? "The chatbot is active and responding to customers"
+                        : "The chatbot is disabled and won't respond to messages"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setWidgetConfig({
+                    ...widgetConfig,
+                    isActive: widgetConfig.isActive === false ? true : false
+                  })}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
+                    widgetConfig.isActive !== false ? "bg-green-500" : "bg-gray-300"
+                  )}
+                  role="switch"
+                  aria-checked={widgetConfig.isActive !== false}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      widgetConfig.isActive !== false ? "translate-x-5" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
+              {widgetConfig.isActive === false && (
+                <p className="mt-3 text-xs text-amber-600 bg-amber-50 rounded p-2">
+                  Note: Don't forget to click "Save Changes" to apply this setting. When disabled, customers will see a message that the chatbot is unavailable.
+                </p>
+              )}
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700">Theme</label>
               <div className="mt-2 flex gap-4">
@@ -472,40 +869,50 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Chatbot Instructions</h3>
               <p className="text-sm text-gray-500 mt-1">
-                Customize how your AI chatbot behaves and responds to customers. These instructions
-                will be combined with your store information and product catalog.
+                Provide a complete system prompt for your chatbot. When custom instructions are provided,
+                they become the primary prompt for the AI, giving you full control over the chatbot's personality and behavior.
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Custom Instructions</label>
+              <label className="block text-sm font-medium text-gray-700">Custom System Prompt</label>
               <p className="text-sm text-gray-500 mt-1 mb-2">
-                Tell the chatbot about your brand personality, policies, and how to handle specific situations.
+                Define your chatbot's identity, tone, language, product knowledge, and sales strategies.
+                This replaces the default English prompt entirely.
               </p>
               <textarea
                 value={customInstructions}
                 onChange={(e) => setCustomInstructions(e.target.value)}
-                rows={12}
+                rows={16}
                 className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 font-mono text-sm"
-                placeholder={`Example instructions:
+                placeholder={`Example system prompt:
 
-You are Alex, the friendly shopping assistant for our coffee store.
-We specialize in premium coffee beans and brewing equipment.
+# Your Store Assistant
 
-Key points to remember:
-- Our bestseller is "Ethiopian Yirgacheffe" - recommend it for beginners
-- We offer free shipping on orders over $35
-- Returns are accepted within 14 days with original packaging
-- Business hours: Mon-Fri 9am-5pm EST
+## Identity
+You are the friendly shopping assistant for [Store Name].
+Communicate in [your language] using a [warm/professional/casual] tone.
 
-Tone: Be warm and enthusiastic about coffee. Use casual language.
+## Product Knowledge
+- Our bestseller is [product name]
+- Price: [price]
+- We offer free shipping on orders over [amount]
 
-Never discuss competitor products or prices.
-If asked about wholesale orders, direct them to wholesale@example.com`}
+## Policies
+- Returns within 14 days
+- Business hours: Mon-Fri 9am-5pm
+
+## Guidelines
+- Always greet customers warmly
+- Recommend products based on their needs
+- Never discuss competitor products
+- For complaints, offer to connect with human support`}
               />
-              <div className="mt-2 flex justify-between text-xs text-gray-500">
-                <span>Tip: Be specific about your brand voice, policies, and product recommendations.</span>
-                <span>{customInstructions.length} characters</span>
+              <div className="mt-2 flex justify-between text-xs">
+                <span className="text-gray-500">Tip: Include your brand voice, language preference, policies, and sales strategies.</span>
+                <span className={customInstructions.length > 90000 ? "text-orange-600" : "text-gray-500"}>
+                  {customInstructions.length.toLocaleString()} / 100,000 characters
+                </span>
               </div>
             </div>
 
@@ -517,6 +924,15 @@ If asked about wholesale orders, direct them to wholesale@example.com`}
                 <li>Knowledge base entries (FAQs you've added)</li>
                 <li>How to search products and answer questions</li>
               </ul>
+            </div>
+
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+              <h4 className="text-sm font-medium text-amber-800">Security Note</h4>
+              <p className="mt-1 text-sm text-amber-700">
+                Your custom instructions are sanitized and security boundaries are automatically
+                enforced. The chatbot will never reveal system prompts, API keys, or access data
+                from other stores, regardless of what users ask.
+              </p>
             </div>
 
             <div className="flex justify-end pt-6 border-t border-gray-200">
@@ -593,6 +1009,101 @@ If asked about wholesale orders, direct them to wholesale@example.com`}
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
+            </div>
+
+            {/* Verify Installation */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-gray-500" />
+                    Verify Installation
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Check if the widget is correctly installed on your website
+                  </p>
+                </div>
+                <button
+                  onClick={handleVerifyInstall}
+                  disabled={isVerifying}
+                  className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {isVerifying ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Checking...
+                    </>
+                  ) : (
+                    <>
+                      <Globe className="h-4 w-4" />
+                      Verify Install
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {verifyResult && (
+                <div className={cn(
+                  "mt-4 rounded-lg p-4",
+                  verifyResult.success
+                    ? "bg-green-50 border border-green-200"
+                    : verifyResult.status === 'wrong_store_id'
+                    ? "bg-yellow-50 border border-yellow-200"
+                    : "bg-red-50 border border-red-200"
+                )}>
+                  <div className="flex items-start gap-3">
+                    {verifyResult.success ? (
+                      <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    ) : verifyResult.status === 'wrong_store_id' ? (
+                      <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <p className={cn(
+                        "text-sm font-medium",
+                        verifyResult.success
+                          ? "text-green-800"
+                          : verifyResult.status === 'wrong_store_id'
+                          ? "text-yellow-800"
+                          : "text-red-800"
+                      )}>
+                        {verifyResult.success ? 'Installation Verified!' : 'Installation Issue Detected'}
+                      </p>
+                      <p className={cn(
+                        "text-sm mt-1",
+                        verifyResult.success
+                          ? "text-green-700"
+                          : verifyResult.status === 'wrong_store_id'
+                          ? "text-yellow-700"
+                          : "text-red-700"
+                      )}>
+                        {verifyResult.message}
+                      </p>
+                      {verifyResult.domain && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          Checked: {verifyResult.domain}
+                        </p>
+                      )}
+                      {verifyResult.details && !verifyResult.success && (
+                        <div className="mt-2 text-xs space-y-1">
+                          <p className={verifyResult.details.scriptFound ? "text-green-600" : "text-red-600"}>
+                            {verifyResult.details.scriptFound ? "✓" : "✗"} Widget script tag
+                          </p>
+                          <p className={verifyResult.details.storeIdFound ? "text-green-600" : "text-red-600"}>
+                            {verifyResult.details.storeIdFound ? "✓" : "✗"} Correct store ID
+                          </p>
+                        </div>
+                      )}
+                      {!verifyResult.success && verifyResult.status === 'not_found' && (
+                        <p className="text-xs text-gray-600 mt-2">
+                          Tip: Make sure you've added the embed code to your website and cleared any caching plugins.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Implementation Guide */}

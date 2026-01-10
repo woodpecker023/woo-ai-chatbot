@@ -14,7 +14,13 @@ export interface AuthUser {
 declare module 'fastify' {
   interface FastifyRequest {
     user?: AuthUser;
-    store?: { id: string; ownerId: string };
+    store?: {
+      id: string;
+      ownerId: string;
+      widgetConfig?: {
+        isActive?: boolean;
+      };
+    };
   }
 }
 
@@ -126,14 +132,27 @@ export async function authenticateWidgetRequest(
     const db = getDbClient();
     const store = await db.query.stores.findFirst({
       where: eq(stores.id, storeId),
-      columns: { id: true, ownerId: true },
+      columns: { id: true, ownerId: true, widgetConfig: true },
     });
 
     if (!store) {
       return reply.status(404).send({ error: 'Store not found' });
     }
 
-    request.store = store;
+    // Check if chatbot is active
+    const isActive = store.widgetConfig?.isActive !== false; // Default to true if not set
+    if (!isActive) {
+      return reply.status(503).send({
+        error: 'chatbot_disabled',
+        message: 'The chatbot is currently disabled for this store.',
+      });
+    }
+
+    request.store = {
+      id: store.id,
+      ownerId: store.ownerId,
+      widgetConfig: store.widgetConfig || undefined,
+    };
   } catch (error) {
     return reply.status(500).send({ error: 'Internal server error' });
   }

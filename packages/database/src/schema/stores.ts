@@ -16,7 +16,8 @@ export const stores = pgTable('stores', {
     position?: 'left' | 'right';
     greeting?: string;
     primaryColor?: string;
-  }>().default({}),
+    isActive?: boolean; // true = chatbot enabled, false = disabled
+  }>().default({ isActive: true }),
   chatbotConfig: jsonb('chatbot_config').$type<{
     customInstructions?: string;
   }>().default({}),
