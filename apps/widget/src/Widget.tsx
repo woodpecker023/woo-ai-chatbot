@@ -100,6 +100,24 @@ export function Widget({ config }: WidgetProps) {
       })
 
       if (!response.ok) {
+        // Handle limit exceeded (429)
+        if (response.status === 429) {
+          const errorData = await response.json().catch(() => ({}))
+          if (errorData.error === 'limit_exceeded') {
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      content: "I'm sorry, this chat service is temporarily unavailable. The store has reached its monthly message limit. Please try again later or contact the store directly for assistance."
+                    }
+                  : msg
+              )
+            )
+            setIsLoading(false)
+            return
+          }
+        }
         throw new Error('Failed to send message')
       }
 

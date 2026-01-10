@@ -1,4 +1,5 @@
 export * from './users.js';
+export * from './pricing-plans.js';
 export * from './stores.js';
 export * from './products.js';
 export * from './faqs.js';
