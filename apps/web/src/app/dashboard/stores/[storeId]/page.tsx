@@ -27,6 +27,7 @@ import {
   AlertCircle,
   Globe,
   Power,
+  Sparkles,
 } from 'lucide-react'
 import { api, ApiError, type Store, type WidgetConfig, type AnalyticsOverview, type DailyMessageCount, type PopularQueriesData, type PeakHoursData, type VerifyInstallResult } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -344,6 +345,13 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
           >
             <MessageSquare className="h-4 w-4" />
             Knowledge Base
+          </Link>
+          <Link
+            href={`/dashboard/stores/${storeId}/wizard`}
+            className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-primary-600 px-4 py-2 text-sm font-medium text-white hover:from-purple-700 hover:to-primary-700"
+          >
+            <Sparkles className="h-4 w-4" />
+            Train AI
           </Link>
         </div>
       </div>

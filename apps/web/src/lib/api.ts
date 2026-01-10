@@ -225,6 +225,31 @@ export const api = {
     request<VerifyInstallResult>(`/stores/${storeId}/verify-install`, {
       method: 'POST',
     }),
+
+  // Wizard - Training
+  crawlUrl: (url: string) =>
+    request<CrawlResult>('/wizard/crawl-url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
+
+  crawlWebsite: (url: string, maxPages: number = 5) =>
+    request<CrawlWebsiteResult>('/wizard/crawl-website', {
+      method: 'POST',
+      body: JSON.stringify({ url, maxPages }),
+    }),
+
+  generateFaqs: (content: string, websiteTitle: string, language: string = 'English', maxFaqs: number = 10) =>
+    request<GenerateFaqsResult>('/wizard/generate-faqs', {
+      method: 'POST',
+      body: JSON.stringify({ content, websiteTitle, language, maxFaqs }),
+    }),
+
+  autoGenerateFaqs: (url: string, maxPages: number = 5, language: string = 'English', maxFaqs: number = 10) =>
+    request<AutoGenerateFaqsResult>('/wizard/auto-generate-faqs', {
+      method: 'POST',
+      body: JSON.stringify({ url, maxPages, language, maxFaqs }),
+    }),
 }
 
 // Types
@@ -381,4 +406,43 @@ export interface VerifyInstallResult {
     scriptFound: boolean
     storeIdFound: boolean
   }
+}
+
+// Wizard Types
+export interface CrawlResult {
+  success: boolean
+  url: string
+  title?: string
+  description?: string
+  content?: string
+  wordCount?: number
+  error?: string
+}
+
+export interface CrawlWebsiteResult {
+  success: boolean
+  pages: CrawlResult[]
+  totalWordCount: number
+  error?: string
+}
+
+export interface GeneratedFAQ {
+  question: string
+  answer: string
+  category?: string
+}
+
+export interface GenerateFaqsResult {
+  success: boolean
+  faqs: GeneratedFAQ[]
+  count: number
+}
+
+export interface AutoGenerateFaqsResult {
+  success: boolean
+  websiteTitle: string
+  pagesScanned: number
+  totalWordCount: number
+  faqs: GeneratedFAQ[]
+  faqCount: number
 }
