@@ -21,6 +21,13 @@ export const stores = pgTable('stores', {
   chatbotConfig: jsonb('chatbot_config').$type<{
     customInstructions?: string;
   }>().default({}),
+  botPersona: jsonb('bot_persona').$type<{
+    name?: string;        // Bot display name (e.g., "Sarah")
+    role?: string;        // Position title (e.g., "Sales Assistant")
+    avatarUrl?: string;   // Profile image URL
+    language?: string;    // Primary language (e.g., "English", "Serbian")
+    description?: string; // Brief business/bot description
+  }>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

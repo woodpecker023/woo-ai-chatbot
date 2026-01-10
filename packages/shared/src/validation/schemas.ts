@@ -42,6 +42,13 @@ export const updateStoreSchema = z.object({
   chatbotConfig: z.object({
     customInstructions: z.string().max(100000).optional(), // Allow up to 100k chars for detailed prompts
   }).optional(),
+  botPersona: z.object({
+    name: z.string().max(50).optional(),
+    role: z.string().max(100).optional(),
+    avatarUrl: z.string().url().optional().or(z.literal('')),
+    language: z.string().max(50).optional(),
+    description: z.string().max(500).optional(),
+  }).optional(),
 });
 
 // FAQ Schemas
@@ -79,4 +86,13 @@ export const widgetConfigSchema = z.object({
 // Chatbot Config Schema
 export const chatbotConfigSchema = z.object({
   customInstructions: z.string().max(100000).optional(), // Allow up to 100k chars for detailed prompts
+});
+
+// Bot Persona Schema
+export const botPersonaSchema = z.object({
+  name: z.string().max(50).optional(),        // Bot display name
+  role: z.string().max(100).optional(),       // Position title
+  avatarUrl: z.string().url().optional().or(z.literal('')), // Profile image URL (allow empty string)
+  language: z.string().max(50).optional(),    // Primary language
+  description: z.string().max(500).optional(), // Brief business description
 });

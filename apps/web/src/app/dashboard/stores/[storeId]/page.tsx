@@ -28,12 +28,14 @@ import {
   Globe,
   Power,
   Sparkles,
+  User,
+  Upload,
 } from 'lucide-react'
-import { api, ApiError, type Store, type WidgetConfig, type AnalyticsOverview, type DailyMessageCount, type PopularQueriesData, type PeakHoursData, type VerifyInstallResult } from '@/lib/api'
+import { api, ApiError, type Store, type WidgetConfig, type BotPersona, type AnalyticsOverview, type DailyMessageCount, type PopularQueriesData, type PeakHoursData, type VerifyInstallResult } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { UsageMeter } from '@/components/UsageMeter'
 
-type Tab = 'general' | 'widget' | 'chatbot' | 'api' | 'embed' | 'analytics'
+type Tab = 'general' | 'widget' | 'chatbot' | 'persona' | 'api' | 'embed' | 'analytics'
 
 export default function StoreSettingsPage({ params }: { params: { storeId: string } }) {
   const { storeId } = params
@@ -62,6 +64,13 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     isActive: true,
   })
   const [customInstructions, setCustomInstructions] = useState('')
+  const [botPersona, setBotPersona] = useState<BotPersona>({
+    name: '',
+    role: '',
+    avatarUrl: '',
+    language: 'English',
+    description: '',
+  })
 
   // Analytics state
   const [analyticsOverview, setAnalyticsOverview] = useState<AnalyticsOverview | null>(null)
@@ -110,6 +119,15 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
       })
       // Load chatbot config
       setCustomInstructions(response.store.chatbotConfig?.customInstructions || '')
+      // Load bot persona
+      const persona = response.store.botPersona || {}
+      setBotPersona({
+        name: persona.name || '',
+        role: persona.role || '',
+        avatarUrl: persona.avatarUrl || '',
+        language: persona.language || 'English',
+        description: persona.description || '',
+      })
     } catch (err) {
       setError('Failed to load store')
     } finally {
@@ -190,6 +208,13 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         widgetConfig,
         chatbotConfig: {
           customInstructions: customInstructions.trim() || undefined,
+        },
+        botPersona: {
+          name: botPersona.name?.trim() || undefined,
+          role: botPersona.role?.trim() || undefined,
+          avatarUrl: botPersona.avatarUrl?.trim() || undefined,
+          language: botPersona.language || undefined,
+          description: botPersona.description?.trim() || undefined,
         },
       })
       setStore(response.store)
@@ -312,6 +337,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     { id: 'analytics' as Tab, label: 'Analytics', icon: BarChart3 },
     { id: 'widget' as Tab, label: 'Widget', icon: Palette },
     { id: 'chatbot' as Tab, label: 'Chatbot', icon: Bot },
+    { id: 'persona' as Tab, label: 'Persona', icon: User },
     { id: 'api' as Tab, label: 'API Key', icon: Key },
     { id: 'embed' as Tab, label: 'Embed', icon: Code },
   ]
@@ -941,6 +967,151 @@ Communicate in [your language] using a [warm/professional/casual] tone.
                 enforced. The chatbot will never reveal system prompts, API keys, or access data
                 from other stores, regardless of what users ask.
               </p>
+            </div>
+
+            <div className="flex justify-end pt-6 border-t border-gray-200">
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Save Changes
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'persona' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Bot Persona</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Customize how your chatbot appears and introduces itself to customers
+              </p>
+            </div>
+
+            {/* Avatar Preview */}
+            <div className="flex items-center gap-6">
+              <div className="flex-shrink-0">
+                {botPersona.avatarUrl ? (
+                  <img
+                    src={botPersona.avatarUrl}
+                    alt="Bot avatar"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-gray-200"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
+                    <Bot className="h-10 w-10 text-white" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700">Avatar URL</label>
+                <input
+                  type="url"
+                  value={botPersona.avatarUrl || ''}
+                  onChange={(e) => setBotPersona({ ...botPersona, avatarUrl: e.target.value })}
+                  placeholder="https://example.com/avatar.png"
+                  className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Enter a URL to an image for your bot's avatar</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Bot Name</label>
+                <input
+                  type="text"
+                  value={botPersona.name || ''}
+                  onChange={(e) => setBotPersona({ ...botPersona, name: e.target.value })}
+                  placeholder="e.g., Sarah, Max, Luna"
+                  className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Role / Title</label>
+                <input
+                  type="text"
+                  value={botPersona.role || ''}
+                  onChange={(e) => setBotPersona({ ...botPersona, role: e.target.value })}
+                  placeholder="e.g., Sales Assistant, Support Agent"
+                  className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Language</label>
+              <select
+                value={botPersona.language || 'English'}
+                onChange={(e) => setBotPersona({ ...botPersona, language: e.target.value })}
+                className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                <option value="English">English</option>
+                <option value="Serbian">Serbian</option>
+                <option value="German">German</option>
+                <option value="French">French</option>
+                <option value="Spanish">Spanish</option>
+                <option value="Italian">Italian</option>
+                <option value="Portuguese">Portuguese</option>
+                <option value="Dutch">Dutch</option>
+                <option value="Polish">Polish</option>
+                <option value="Russian">Russian</option>
+                <option value="Chinese">Chinese</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+                <option value="Arabic">Arabic</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Primary language for the chatbot responses</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Business Description</label>
+              <textarea
+                value={botPersona.description || ''}
+                onChange={(e) => setBotPersona({ ...botPersona, description: e.target.value })}
+                rows={3}
+                placeholder="Brief description of your business that helps the bot understand context..."
+                className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>This helps the AI understand your business context</span>
+                <span>{(botPersona.description || '').length} / 500</span>
+              </div>
+            </div>
+
+            {/* Preview Card */}
+            <div className="rounded-lg bg-gray-50 border border-gray-200 p-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Preview</h4>
+              <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                {botPersona.avatarUrl ? (
+                  <img
+                    src={botPersona.avatarUrl}
+                    alt="Bot"
+                    className="w-10 h-10 rounded-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
+                    <Bot className="h-5 w-5 text-white" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {botPersona.name || 'AI Assistant'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {botPersona.role || 'Shopping Assistant'}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end pt-6 border-t border-gray-200">

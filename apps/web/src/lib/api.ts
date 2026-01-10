@@ -260,6 +260,7 @@ export interface Store {
   apiKey: string
   widgetConfig: WidgetConfig
   chatbotConfig?: ChatbotConfig
+  botPersona?: BotPersona
   createdAt: string
   updatedAt: string
 }
@@ -276,6 +277,14 @@ export interface ChatbotConfig {
   customInstructions?: string
 }
 
+export interface BotPersona {
+  name?: string
+  role?: string
+  avatarUrl?: string
+  language?: string
+  description?: string
+}
+
 export interface CreateStoreData {
   name: string
   wooDomain: string
@@ -290,6 +299,7 @@ export interface UpdateStoreData {
   wooConsumerSecret?: string
   widgetConfig: WidgetConfig
   chatbotConfig?: ChatbotConfig
+  botPersona?: BotPersona
 }
 
 export interface FAQ {
