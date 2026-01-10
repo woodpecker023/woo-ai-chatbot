@@ -42,3 +42,6 @@ coverage/
 # Misc
 *.tsbuildinfo
 .cache/
+
+# Claude local settings (may contain sensitive data)
+.claude/settings.local.json
