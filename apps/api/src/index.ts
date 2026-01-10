@@ -17,6 +17,7 @@ import { storeRoutes } from './routes/stores.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { authRoutes } from './routes/auth.js';
 import { documentRoutes } from './routes/documents.js';
+import { wizardRoutes } from './routes/wizard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -73,6 +74,7 @@ await server.register(chatRoutes, { prefix: '/chat' });
 await server.register(storeRoutes, { prefix: '/stores' });
 await server.register(documentRoutes, { prefix: '/stores' });
 await server.register(webhookRoutes, { prefix: '/webhooks' });
+await server.register(wizardRoutes, { prefix: '/wizard' });
 
 // Error handler
 server.setErrorHandler((error, _request, reply) => {
