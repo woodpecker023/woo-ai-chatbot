@@ -191,7 +191,10 @@ export const api = {
 
   // Usage
   getUsage: (storeId: string) =>
-    request<{ usage: UsageMetrics }>(`/stores/${storeId}/usage`),
+    request<StoreUsage>(`/stores/${storeId}/usage`),
+
+  getUsageHistory: (storeId: string) =>
+    request<{ history: UsageHistory[] }>(`/stores/${storeId}/usage/history`),
 
   // Billing
   createCheckoutSession: (storeId: string) =>
@@ -212,6 +215,7 @@ export interface Store {
   wooDomain: string
   apiKey: string
   widgetConfig: WidgetConfig
+  chatbotConfig?: ChatbotConfig
   createdAt: string
   updatedAt: string
 }
@@ -221,6 +225,10 @@ export interface WidgetConfig {
   primaryColor: string
   position: 'left' | 'right'
   greeting: string
+}
+
+export interface ChatbotConfig {
+  customInstructions?: string
 }
 
 export interface CreateStoreData {
@@ -236,6 +244,7 @@ export interface UpdateStoreData {
   wooConsumerKey?: string
   wooConsumerSecret?: string
   widgetConfig: WidgetConfig
+  chatbotConfig?: ChatbotConfig
 }
 
 export interface FAQ {
@@ -248,6 +257,29 @@ export interface FAQ {
 export interface UsageMetrics {
   messageCount: number
   month: string
+}
+
+export type UsageStatus = 'ok' | 'warning' | 'critical' | 'exceeded'
+
+export interface StoreUsage {
+  storeId: string
+  plan: {
+    id: string | null
+    name: string
+    displayName: string
+    limit: number
+  }
+  currentMonth: string
+  messageCount: number
+  remaining: number
+  percentUsed: number
+  resetsAt: string
+  status: UsageStatus
+}
+
+export interface UsageHistory {
+  month: string
+  count: number
 }
 
 export interface UserProfile {

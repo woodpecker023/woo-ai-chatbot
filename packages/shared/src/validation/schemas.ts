@@ -38,6 +38,9 @@ export const updateStoreSchema = z.object({
     greeting: z.string().max(255).optional(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   }).optional(),
+  chatbotConfig: z.object({
+    customInstructions: z.string().max(5000).optional(),
+  }).optional(),
 });
 
 // FAQ Schemas
@@ -69,4 +72,9 @@ export const widgetConfigSchema = z.object({
   position: z.enum(['left', 'right']).optional(),
   greeting: z.string().max(255).optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+});
+
+// Chatbot Config Schema
+export const chatbotConfigSchema = z.object({
+  customInstructions: z.string().max(5000).optional(),
 });

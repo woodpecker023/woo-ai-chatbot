@@ -16,11 +16,13 @@ import {
   Code,
   MessageSquare,
   Package,
+  Bot,
 } from 'lucide-react'
 import { api, ApiError, type Store, type WidgetConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { UsageMeter } from '@/components/UsageMeter'
 
-type Tab = 'general' | 'widget' | 'api' | 'embed'
+type Tab = 'general' | 'widget' | 'chatbot' | 'api' | 'embed'
 
 export default function StoreSettingsPage({ params }: { params: { storeId: string } }) {
   const { storeId } = params
@@ -47,6 +49,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     position: 'right',
     greeting: 'Hi! How can I help you today?',
   })
+  const [customInstructions, setCustomInstructions] = useState('')
 
   useEffect(() => {
     loadStore()
@@ -72,6 +75,8 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         position: storeConfig.position || defaultConfig.position,
         greeting: storeConfig.greeting || defaultConfig.greeting,
       })
+      // Load chatbot config
+      setCustomInstructions(response.store.chatbotConfig?.customInstructions || '')
     } catch (err) {
       setError('Failed to load store')
     } finally {
@@ -91,6 +96,9 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
         wooConsumerKey: wooConsumerKey || undefined,
         wooConsumerSecret: wooConsumerSecret || undefined,
         widgetConfig,
+        chatbotConfig: {
+          customInstructions: customInstructions || undefined,
+        },
       })
       setStore(response.store)
       setSuccess('Settings saved successfully')
@@ -206,6 +214,7 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const tabs = [
     { id: 'general' as Tab, label: 'General', icon: Settings },
     { id: 'widget' as Tab, label: 'Widget', icon: Palette },
+    { id: 'chatbot' as Tab, label: 'Chatbot', icon: Bot },
     { id: 'api' as Tab, label: 'API Key', icon: Key },
     { id: 'embed' as Tab, label: 'Embed', icon: Code },
   ]
@@ -241,6 +250,11 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
             Knowledge Base
           </Link>
         </div>
+      </div>
+
+      {/* Usage Meter */}
+      <div className="mb-6">
+        <UsageMeter storeId={storeId} />
       </div>
 
       {(error || success) && (
@@ -438,6 +452,71 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                 onChange={(e) => setWidgetConfig({ ...widgetConfig, greeting: e.target.value })}
                 className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
+            </div>
+
+            <div className="flex justify-end pt-6 border-t border-gray-200">
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Save Changes
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'chatbot' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Chatbot Instructions</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Customize how your AI chatbot behaves and responds to customers. These instructions
+                will be combined with your store information and product catalog.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Custom Instructions</label>
+              <p className="text-sm text-gray-500 mt-1 mb-2">
+                Tell the chatbot about your brand personality, policies, and how to handle specific situations.
+              </p>
+              <textarea
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                rows={12}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 font-mono text-sm"
+                placeholder={`Example instructions:
+
+You are Alex, the friendly shopping assistant for our coffee store.
+We specialize in premium coffee beans and brewing equipment.
+
+Key points to remember:
+- Our bestseller is "Ethiopian Yirgacheffe" - recommend it for beginners
+- We offer free shipping on orders over $35
+- Returns are accepted within 14 days with original packaging
+- Business hours: Mon-Fri 9am-5pm EST
+
+Tone: Be warm and enthusiastic about coffee. Use casual language.
+
+Never discuss competitor products or prices.
+If asked about wholesale orders, direct them to wholesale@example.com`}
+              />
+              <div className="mt-2 flex justify-between text-xs text-gray-500">
+                <span>Tip: Be specific about your brand voice, policies, and product recommendations.</span>
+                <span>{customInstructions.length} characters</span>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+              <h4 className="text-sm font-medium text-blue-800">What the chatbot already knows</h4>
+              <ul className="mt-2 text-sm text-blue-700 space-y-1">
+                <li>Your store name and domain</li>
+                <li>All synced products (names, descriptions, prices)</li>
+                <li>Knowledge base entries (FAQs you've added)</li>
+                <li>How to search products and answer questions</li>
+              </ul>
             </div>
 
             <div className="flex justify-end pt-6 border-t border-gray-200">

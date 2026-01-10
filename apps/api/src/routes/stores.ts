@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { getDbClient } from '@woo-ai/database';
-import { stores, faqs, usageMetrics, products } from '@woo-ai/database';
+import { stores, faqs, products } from '@woo-ai/database';
 import { eq, and, ilike, sql, desc } from 'drizzle-orm';
-import { createStoreSchema, updateStoreSchema, createFaqSchema, generateApiKey, getCurrentMonthKey } from '@woo-ai/shared';
+import { createStoreSchema, updateStoreSchema, createFaqSchema, generateApiKey } from '@woo-ai/shared';
 import { authenticateUser, validateStoreOwnership } from '../middleware/auth.js';
 import { syncProducts } from '../services/woocommerce.js';
 import { embedFaq } from '../services/rag.js';
@@ -26,6 +26,7 @@ export async function storeRoutes(server: FastifyInstance) {
           wooDomain: true,
           apiKey: true,
           widgetConfig: true,
+          chatbotConfig: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -223,26 +224,23 @@ export async function storeRoutes(server: FastifyInstance) {
     },
   });
 
-  // Get usage metrics
+  // Get usage metrics with plan details
   server.get<StoreIdParams>('/:storeId/usage', {
     preHandler: [authenticateUser, validateStoreOwnership],
     handler: async (request) => {
-      const db = getDbClient();
-      const monthKey = getCurrentMonthKey();
+      const { getStoreUsage } = await import('../services/usage.js');
+      const usage = await getStoreUsage(request.params.storeId);
+      return usage;
+    },
+  });
 
-      const metrics = await db.query.usageMetrics.findFirst({
-        where: and(
-          eq(usageMetrics.storeId, request.params.storeId),
-          eq(usageMetrics.month, monthKey)
-        ),
-      });
-
-      return {
-        storeId: request.params.storeId,
-        month: monthKey,
-        messageCount: metrics?.messageCount || 0,
-        limit: 10000, // TODO: Get from subscription plan
-      };
+  // Get usage history (last 6 months)
+  server.get<StoreIdParams>('/:storeId/usage/history', {
+    preHandler: [authenticateUser, validateStoreOwnership],
+    handler: async (request) => {
+      const { getUsageHistory } = await import('../services/usage.js');
+      const history = await getUsageHistory(request.params.storeId, 6);
+      return { history };
     },
   });
 

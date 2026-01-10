@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, uuid, jsonb, index } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
+import { pricingPlans } from './pricing-plans.js';
 
 export const stores = pgTable('stores', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -9,11 +10,15 @@ export const stores = pgTable('stores', {
   wooConsumerKey: text('woo_consumer_key'),
   wooConsumerSecret: text('woo_consumer_secret'),
   apiKey: text('api_key').notNull().unique(),
+  planId: uuid('plan_id').references(() => pricingPlans.id), // null = free tier
   widgetConfig: jsonb('widget_config').$type<{
     theme?: 'light' | 'dark';
     position?: 'left' | 'right';
     greeting?: string;
     primaryColor?: string;
+  }>().default({}),
+  chatbotConfig: jsonb('chatbot_config').$type<{
+    customInstructions?: string;
   }>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
