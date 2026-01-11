@@ -14,6 +14,7 @@ import { classifyIntent, getToolsForIntent, type IntentClassification } from '..
 import { getFiltersForIntent } from '../services/rag.js';
 import { ZodError } from 'zod';
 import type OpenAI from 'openai';
+import type { StructuredResponseMetadata, ProductRecommendation } from '@woo-ai/shared';
 
 interface MissingDemandEntry {
   query: string;
@@ -183,6 +184,45 @@ function buildSystemPrompt(
   lines.push('- Include product links naturally in your recommendations');
   lines.push('- If multiple products match, help them choose by explaining differences');
 
+  // STRUCTURED RESPONSE FORMAT (T5)
+  lines.push('');
+  lines.push('---');
+  lines.push('RESPONSE STRUCTURE GUIDELINES:');
+  lines.push('');
+  lines.push('Format your responses for clarity and consistency:');
+  lines.push('');
+  lines.push('1. DIRECT ANSWER FIRST');
+  lines.push('   - Start with a clear, direct answer to the question');
+  lines.push('   - Keep it concise (1-2 sentences for the main point)');
+  lines.push('');
+  lines.push('2. KEY DETAILS (if needed)');
+  lines.push('   - Add relevant details as short bullet points');
+  lines.push('   - Maximum 3-4 key points');
+  lines.push('   - Each point should be actionable or informative');
+  lines.push('');
+  lines.push('3. PRODUCT RECOMMENDATIONS (when relevant)');
+  lines.push('   - Recommend maximum 3 products');
+  lines.push('   - For each product: name, price, and WHY it fits their needs');
+  lines.push('   - Include the product link');
+  lines.push('');
+  lines.push('4. NEXT STEP / CALL TO ACTION');
+  lines.push('   - End with a clear next step or offer to help further');
+  lines.push('   - Examples: "Want me to tell you more about any of these?"');
+  lines.push('   - Or: "Ready to order? Here\'s the link!"');
+  lines.push('');
+  lines.push('EXAMPLE RESPONSE FORMAT:');
+  lines.push('```');
+  lines.push('Za ljubitelja Slytherin-a preporučujem ove štapiće:');
+  lines.push('');
+  lines.push('1. **Draco Malfoy** (1.890 RSD) - Savršen izbor za pravu Slytherin dušu!');
+  lines.push('   Link: [url]');
+  lines.push('');
+  lines.push('2. **Severus Snape** (1.890 RSD) - Za one koji cene moć i mudrost.');
+  lines.push('   Link: [url]');
+  lines.push('');
+  lines.push('Svi su ručno rađeni i potpuno jedinstveni. Koji ti se više sviđa? 🪄');
+  lines.push('```');
+
   // TOOL-FIRST ENFORCEMENT - Eliminate hallucinations (T4)
   lines.push('');
   lines.push('---');
@@ -228,6 +268,92 @@ function buildSystemPrompt(
   lines.push('- You can ONLY use the tools listed above - no others exist');
 
   return lines.join('\n');
+}
+
+/**
+ * Generate structured metadata for the response (T5)
+ * This provides consistent follow-up questions and next actions based on intent
+ */
+function generateStructuredMetadata(
+  intent: string,
+  products: Array<{ id: string; name: string; price: string; currency: string; url: string; imageUrl?: string }>,
+  confidence?: number
+): StructuredResponseMetadata {
+  const followUpQuestions: string[] = [];
+  let nextAction: StructuredResponseMetadata['nextAction'];
+
+  // Generate follow-up questions based on intent
+  switch (intent) {
+    case 'PRODUCT_DISCOVERY':
+    case 'PRODUCT_DETAILS':
+      if (products.length > 0) {
+        followUpQuestions.push('Would you like more details about any of these products?');
+        followUpQuestions.push('Do you have a specific budget in mind?');
+        nextAction = {
+          type: 'view_product',
+          label: 'View Product',
+          url: products[0]?.url,
+        };
+      } else {
+        followUpQuestions.push('Would you like me to search for something else?');
+        followUpQuestions.push('Can you describe what you\'re looking for in more detail?');
+        nextAction = { type: 'browse_more', label: 'Browse Products' };
+      }
+      break;
+
+    case 'PRODUCT_COMPARE':
+      followUpQuestions.push('Would you like me to highlight the key differences?');
+      followUpQuestions.push('Do you have specific features you care about most?');
+      if (products.length > 0) {
+        nextAction = { type: 'view_product', label: 'View Details' };
+      }
+      break;
+
+    case 'SHIPPING_RETURNS':
+    case 'PAYMENT':
+    case 'POLICY':
+      followUpQuestions.push('Is there anything else about our policies I can help with?');
+      followUpQuestions.push('Would you like to speak with our support team?');
+      nextAction = { type: 'contact_support', label: 'Contact Support' };
+      break;
+
+    case 'ORDER_STATUS':
+      followUpQuestions.push('Do you need help with anything else regarding your order?');
+      followUpQuestions.push('Would you like to contact our support team?');
+      nextAction = { type: 'contact_support', label: 'Contact Support' };
+      break;
+
+    case 'GENERAL_SUPPORT':
+      followUpQuestions.push('Is there anything else I can help you with?');
+      followUpQuestions.push('Would you like me to connect you with our support team?');
+      nextAction = { type: 'contact_support', label: 'Get Help' };
+      break;
+
+    case 'SMALLTALK':
+    default:
+      followUpQuestions.push('How can I help you today?');
+      followUpQuestions.push('Are you looking for any products?');
+      nextAction = { type: 'browse_more', label: 'Browse Products' };
+      break;
+  }
+
+  // Build product recommendations with reasons
+  const productRecommendations: ProductRecommendation[] = products.slice(0, 3).map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    currency: p.currency,
+    url: p.url,
+    imageUrl: p.imageUrl,
+  }));
+
+  return {
+    products: productRecommendations,
+    followUpQuestions: followUpQuestions.slice(0, 2), // Max 2 follow-ups
+    nextAction,
+    intent,
+    confidence,
+  };
 }
 
 export async function chatRoutes(server: FastifyInstance) {
@@ -503,10 +629,21 @@ export async function chatRoutes(server: FastifyInstance) {
           }
         }
 
-        // Send products if any
-        if (matchedProducts.length > 0) {
-          reply.raw.write(`data: ${JSON.stringify({ type: 'products', products: matchedProducts })}\n\n`);
+        // Send products if any (limit to 3 per T5)
+        const topProducts = matchedProducts.slice(0, 3);
+        if (topProducts.length > 0) {
+          reply.raw.write(`data: ${JSON.stringify({ type: 'products', products: topProducts })}\n\n`);
         }
+
+        // Generate structured metadata (T5)
+        const structuredMetadata = generateStructuredMetadata(
+          intentResult.intent,
+          topProducts as Array<{ id: string; name: string; price: string; currency: string; url: string; imageUrl?: string }>,
+          intentResult.confidence
+        );
+
+        // Send metadata event
+        reply.raw.write(`data: ${JSON.stringify({ type: 'metadata', metadata: structuredMetadata })}\n\n`);
 
         // Send done signal
         reply.raw.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);

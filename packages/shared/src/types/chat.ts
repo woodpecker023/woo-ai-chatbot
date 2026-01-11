@@ -67,3 +67,39 @@ export interface RagFaqResult {
   category?: string;
   similarity: number;
 }
+
+// Structured Response Types (T5)
+export interface ProductRecommendation {
+  id: string;
+  name: string;
+  price: string;
+  currency: string;
+  url: string;
+  imageUrl?: string;
+  reason?: string; // Why this product was recommended
+}
+
+export interface StructuredResponseMetadata {
+  // Products mentioned/recommended (max 3)
+  products: ProductRecommendation[];
+  // Suggested follow-up questions for the user
+  followUpQuestions: string[];
+  // Suggested next action (e.g., "view_product", "contact_support", "browse_more")
+  nextAction?: {
+    type: 'view_product' | 'contact_support' | 'browse_more' | 'checkout' | 'none';
+    label?: string;
+    url?: string;
+  };
+  // Intent that was classified
+  intent?: string;
+  // Confidence of the response
+  confidence?: number;
+}
+
+// Chat stream event types
+export type ChatStreamEvent =
+  | { type: 'content'; content: string }
+  | { type: 'products'; products: ProductRecommendation[] }
+  | { type: 'metadata'; metadata: StructuredResponseMetadata }
+  | { type: 'done' }
+  | { type: 'error'; error: string };
