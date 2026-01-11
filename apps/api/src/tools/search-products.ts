@@ -1,4 +1,4 @@
-import { searchProducts } from '../services/rag.js';
+import { searchProducts, type SearchFilters } from '../services/rag.js';
 
 /**
  * Strip HTML tags and decode common HTML entities
@@ -19,8 +19,12 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-export async function handleSearchProducts(storeId: string, args: { query: string; limit?: number }) {
-  const results = await searchProducts(storeId, args.query, args.limit || 5);
+export async function handleSearchProducts(
+  storeId: string,
+  args: { query: string; limit?: number },
+  filters?: SearchFilters
+) {
+  const results = await searchProducts(storeId, args.query, args.limit || 5, filters);
 
   if (results.length === 0) {
     return {

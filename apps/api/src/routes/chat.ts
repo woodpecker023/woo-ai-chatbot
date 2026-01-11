@@ -11,6 +11,7 @@ import { handleOrderStatus } from '../tools/order-status.js';
 import { handleCreateHandoff } from '../tools/create-handoff.js';
 import { canSendMessage, incrementUsage } from '../services/usage.js';
 import { classifyIntent, getToolsForIntent, type IntentClassification } from '../services/intent-classifier.js';
+import { getFiltersForIntent } from '../services/rag.js';
 import { ZodError } from 'zod';
 import type OpenAI from 'openai';
 
@@ -385,13 +386,16 @@ export async function chatRoutes(server: FastifyInstance) {
             let searchQuery = '';
             const toolResults: Array<{ toolCallId: string; content: string }> = [];
 
+            // Get filters based on intent for pre-filtering RAG results
+            const ragFilters = getFiltersForIntent(intentResult.intent);
+
             for (const toolCall of toolCalls) {
               const args = JSON.parse(toolCall.function.arguments);
 
               let toolResult;
               switch (toolCall.function.name) {
                 case 'search_products':
-                  toolResult = await handleSearchProducts(storeId, args);
+                  toolResult = await handleSearchProducts(storeId, args, ragFilters);
                   if (toolResult.products && toolResult.products.length > 0) {
                     matchedProducts.push(...toolResult.products);
                   } else {
@@ -400,7 +404,7 @@ export async function chatRoutes(server: FastifyInstance) {
                   }
                   break;
                 case 'search_faq':
-                  toolResult = await handleSearchFaq(storeId, args);
+                  toolResult = await handleSearchFaq(storeId, args, ragFilters);
                   // Check if FAQ search returned no results
                   if (toolResult.content.includes('No FAQ entries found')) {
                     faqSearchEmpty = true;

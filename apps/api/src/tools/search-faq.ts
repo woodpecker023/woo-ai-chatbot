@@ -1,7 +1,11 @@
-import { searchFaqs } from '../services/rag.js';
+import { searchFaqs, type SearchFilters } from '../services/rag.js';
 
-export async function handleSearchFaq(storeId: string, args: { query: string; limit?: number }) {
-  const results = await searchFaqs(storeId, args.query, args.limit || 3);
+export async function handleSearchFaq(
+  storeId: string,
+  args: { query: string; limit?: number },
+  filters?: SearchFilters
+) {
+  const results = await searchFaqs(storeId, args.query, args.limit || 3, filters);
 
   if (results.length === 0) {
     return {
