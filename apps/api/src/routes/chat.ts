@@ -286,10 +286,11 @@ export async function chatRoutes(server: FastifyInstance) {
 
           // Check if we're done
           if (chunk.choices[0]?.finish_reason === 'tool_calls') {
-            // Execute tool calls
+            // Execute tool calls and collect results
             let productSearchEmpty = false;
             let faqSearchEmpty = false;
             let searchQuery = '';
+            const toolResults: Array<{ toolCallId: string; content: string }> = [];
 
             for (const toolCall of toolCalls) {
               const args = JSON.parse(toolCall.function.arguments);
@@ -323,7 +324,10 @@ export async function chatRoutes(server: FastifyInstance) {
                   toolResult = { content: 'Tool not found' };
               }
 
-              assistantMessage += `\n\n${toolResult.content}`;
+              toolResults.push({
+                toolCallId: toolCall.id,
+                content: toolResult.content,
+              });
             }
 
             // Track missing demand if searches returned empty
@@ -341,8 +345,32 @@ export async function chatRoutes(server: FastifyInstance) {
               });
             }
 
-            // Send final message
-            reply.raw.write(`data: ${JSON.stringify({ type: 'content', content: assistantMessage })}\n\n`);
+            // Send tool results back to AI to generate a conversational response
+            const messagesWithToolResults: OpenAI.Chat.ChatCompletionMessageParam[] = [
+              ...messages,
+              {
+                role: 'assistant',
+                content: assistantMessage || null,
+                tool_calls: toolCalls,
+              },
+              ...toolResults.map(tr => ({
+                role: 'tool' as const,
+                tool_call_id: tr.toolCallId,
+                content: tr.content,
+              })),
+            ];
+
+            // Get AI's conversational response based on tool results
+            const followUpStream = await getChatCompletion(messagesWithToolResults, AI_TOOLS, true);
+
+            for await (const followUpChunk of followUpStream) {
+              const followUpDelta = followUpChunk.choices[0]?.delta;
+
+              if (followUpDelta?.content) {
+                assistantMessage += followUpDelta.content;
+                reply.raw.write(`data: ${JSON.stringify({ type: 'content', content: followUpDelta.content })}\n\n`);
+              }
+            }
           }
         }
 
