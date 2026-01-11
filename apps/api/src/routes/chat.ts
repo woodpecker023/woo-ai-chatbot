@@ -10,6 +10,7 @@ import { handleSearchFaq } from '../tools/search-faq.js';
 import { handleOrderStatus } from '../tools/order-status.js';
 import { handleCreateHandoff } from '../tools/create-handoff.js';
 import { canSendMessage, incrementUsage } from '../services/usage.js';
+import { classifyIntent, getToolsForIntent, type IntentClassification } from '../services/intent-classifier.js';
 import { ZodError } from 'zod';
 import type OpenAI from 'openai';
 
@@ -50,15 +51,17 @@ function sanitizeCustomInstructions(instructions: string): string {
 }
 
 /**
- * Build a dynamic system prompt based on store configuration
+ * Build a dynamic system prompt based on store configuration and intent
  */
 function buildSystemPrompt(
   store: StoreData,
   productCount: number,
-  faqCount: number
+  faqCount: number,
+  intentResult?: IntentClassification
 ): string {
   const lines: string[] = [];
   const hasCustomInstructions = !!store.chatbotConfig?.customInstructions?.trim();
+  const intent = intentResult?.intent;
 
   // If custom instructions are provided, use them as the primary system prompt
   if (hasCustomInstructions) {
@@ -102,6 +105,60 @@ function buildSystemPrompt(
     lines.push('- Use the available tools to provide accurate information');
     lines.push('- If you cannot help with something, offer to connect the customer with support');
     lines.push('- Always be honest about what you can and cannot do');
+  }
+
+  // INTENT-SPECIFIC CONTEXT - Guide the AI based on classified intent
+  if (intent) {
+    lines.push('');
+    lines.push('---');
+    lines.push(`CURRENT USER INTENT: ${intent}`);
+    lines.push('');
+
+    switch (intent) {
+      case 'SMALLTALK':
+        lines.push('RESPONSE STYLE: Keep your response SHORT and friendly (1-2 sentences max).');
+        lines.push('Do NOT use tools. Just respond naturally to the greeting/small talk.');
+        lines.push('After responding, you may gently offer to help with products or questions.');
+        break;
+
+      case 'ORDER_STATUS':
+        lines.push('RESPONSE STYLE: Focus ONLY on order status.');
+        lines.push('Use the order_status tool if the user provides an order number.');
+        lines.push('If no order number provided, ask for it politely.');
+        lines.push('Do NOT search products or FAQ for order-related queries.');
+        break;
+
+      case 'PRODUCT_DISCOVERY':
+        lines.push('RESPONSE STYLE: Help the user explore and discover products.');
+        lines.push('Ask clarifying questions if needed (budget, preferences, use case).');
+        lines.push('Recommend 2-3 relevant products maximum, not a long list.');
+        break;
+
+      case 'PRODUCT_DETAILS':
+        lines.push('RESPONSE STYLE: Provide specific details about the product.');
+        lines.push('Include price, features, and a direct link to the product.');
+        lines.push('Be concise but informative.');
+        break;
+
+      case 'PRODUCT_COMPARE':
+        lines.push('RESPONSE STYLE: Help compare the products objectively.');
+        lines.push('Highlight key differences and similarities.');
+        lines.push('Make a recommendation based on the user\'s apparent needs.');
+        break;
+
+      case 'SHIPPING_RETURNS':
+      case 'PAYMENT':
+      case 'POLICY':
+        lines.push('RESPONSE STYLE: Provide clear, factual answers about store policies.');
+        lines.push('Use the search_faq tool to find accurate information.');
+        lines.push('If information is not found, say so honestly.');
+        break;
+
+      case 'GENERAL_SUPPORT':
+        lines.push('RESPONSE STYLE: Be helpful and empathetic.');
+        lines.push('Try to resolve the issue or offer to connect with human support.');
+        break;
+    }
   }
 
   // LANGUAGE DETECTION - Always included
@@ -194,10 +251,7 @@ export async function chatRoutes(server: FastifyInstance) {
         const productCount = productCountResult?.count ?? 0;
         const faqCount = faqCountResult?.count ?? 0;
 
-        // Build dynamic system prompt
-        const systemPrompt = buildSystemPrompt(storeData, productCount, faqCount);
-
-        // Get or create session
+        // Get or create session first (needed for history context)
         let session = await db.query.chatSessions.findFirst({
           where: and(
             eq(chatSessions.storeId, storeId),
@@ -216,13 +270,47 @@ export async function chatRoutes(server: FastifyInstance) {
             .returning();
         }
 
-        // Store user message
+        // Get conversation history BEFORE storing new message (for intent context)
+        const historyForIntent = await db.query.chatMessages.findMany({
+          where: eq(chatMessages.sessionId, session.id),
+          orderBy: [desc(chatMessages.createdAt)],
+          limit: 6,
+        });
+
+        // === INTENT CLASSIFICATION ===
+        const intentResult = await classifyIntent(body.message, {
+          previousMessages: historyForIntent.reverse().map((m: { role: string; content: string }) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        });
+
+        const toolConfig = getToolsForIntent(intentResult.intent);
+
+        // Log intent classification
+        server.log.info({
+          msg: 'Intent classified',
+          storeId,
+          sessionId: body.sessionId,
+          intent: intentResult.intent,
+          confidence: intentResult.confidence,
+          reasoning: intentResult.reasoning,
+          suggestedTools: intentResult.suggestedTools,
+        });
+
+        // Store user message with intent metadata
         await db.insert(chatMessages).values({
           sessionId: session.id,
           role: 'user',
           content: body.message,
-          metadata: {},
+          metadata: {
+            intent: intentResult.intent,
+            intentConfidence: intentResult.confidence,
+          },
         });
+
+        // Build dynamic system prompt with intent context
+        const systemPrompt = buildSystemPrompt(storeData, productCount, faqCount, intentResult);
 
         // Get conversation history (last 10 messages)
         const history = await db.query.chatMessages.findMany({
@@ -243,8 +331,13 @@ export async function chatRoutes(server: FastifyInstance) {
           })),
         ];
 
+        // Filter tools based on intent
+        const filteredTools = toolConfig.skipRAG
+          ? AI_TOOLS.filter((t) => toolConfig.allowedTools.includes(t.function.name))
+          : AI_TOOLS;
+
         // Get streaming response
-        const stream = await getChatCompletion(messages, AI_TOOLS, true);
+        const stream = await getChatCompletion(messages, filteredTools.length > 0 ? filteredTools : AI_TOOLS, true);
 
         let assistantMessage = '';
         let toolCalls: Array<OpenAI.Chat.ChatCompletionMessageToolCall> = [];
