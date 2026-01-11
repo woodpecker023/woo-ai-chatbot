@@ -9,15 +9,15 @@ export async function handleSearchFaq(
 
   if (results.length === 0) {
     return {
-      content: 'No FAQ entries found matching your question.',
+      content: '[KNOWLEDGE BASE SEARCH - NO RESULTS]\nNo FAQ entries found matching this question. If the customer is asking about policies, shipping, or returns, tell them you don\'t have that specific information and offer to connect them with support.',
     };
   }
 
   const faqList = results
-    .map((f) => `Q: ${f.question}\nA: ${f.answer}`)
+    .map((f, i) => `[FAQ Entry ${i + 1}${f.category ? ` - Category: ${f.category}` : ''}]\nQ: ${f.question}\nA: ${f.answer}`)
     .join('\n\n');
 
   return {
-    content: `Here's what I found in our FAQ:\n\n${faqList}`,
+    content: `[KNOWLEDGE BASE SEARCH - VERIFIED DATA]\nFound ${results.length} relevant FAQ entries:\n\n${faqList}\n\nIMPORTANT: The information above is from the store's official knowledge base. Only share policies/shipping info that appears above.`,
   };
 }

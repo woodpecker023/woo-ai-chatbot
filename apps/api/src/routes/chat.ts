@@ -183,6 +183,38 @@ function buildSystemPrompt(
   lines.push('- Include product links naturally in your recommendations');
   lines.push('- If multiple products match, help them choose by explaining differences');
 
+  // TOOL-FIRST ENFORCEMENT - Eliminate hallucinations (T4)
+  lines.push('');
+  lines.push('---');
+  lines.push('FACTUAL ACCURACY RULES (CRITICAL - NO HALLUCINATIONS):');
+  lines.push('');
+  lines.push('You MUST ONLY state facts that come from tool results or the store\'s knowledge base.');
+  lines.push('');
+  lines.push('PROTECTED INFORMATION (must come from tools/retrieval):');
+  lines.push('- Product prices → ONLY from search_products results');
+  lines.push('- Product availability/stock → ONLY from search_products results');
+  lines.push('- Shipping times/costs → ONLY from search_faq results');
+  lines.push('- Return/refund policies → ONLY from search_faq results');
+  lines.push('- Warranty information → ONLY from search_faq results');
+  lines.push('- Payment methods → ONLY from search_faq results');
+  lines.push('');
+  lines.push('IF INFORMATION IS MISSING:');
+  lines.push('- DO NOT make up or estimate prices');
+  lines.push('- DO NOT invent shipping times or policies');
+  lines.push('- DO NOT guess stock availability');
+  lines.push('- Instead, say: "I don\'t have that specific information. Let me connect you with our team who can help."');
+  lines.push('- Or: "I couldn\'t find details about [topic] in our knowledge base."');
+  lines.push('');
+  lines.push('EXAMPLES OF WHAT NOT TO DO:');
+  lines.push('- ❌ "Shipping usually takes 3-5 days" (if not from FAQ)');
+  lines.push('- ❌ "This product costs around $50" (if not from search results)');
+  lines.push('- ❌ "We offer free returns" (if not from FAQ)');
+  lines.push('');
+  lines.push('EXAMPLES OF CORRECT BEHAVIOR:');
+  lines.push('- ✅ "Based on our FAQ, shipping takes 2-4 business days"');
+  lines.push('- ✅ "This wand is priced at 1,890 RSD according to our catalog"');
+  lines.push('- ✅ "I don\'t see specific return policy details - would you like me to connect you with support?"');
+
   // SECURITY BOUNDARIES - Always appended, cannot be overridden
   lines.push('');
   lines.push('---');

@@ -28,7 +28,7 @@ export async function handleSearchProducts(
 
   if (results.length === 0) {
     return {
-      content: 'No products found matching your search. Try different keywords or ask me what products are available.',
+      content: '[PRODUCT CATALOG SEARCH - NO RESULTS]\nNo products found matching your search. You may tell the customer you couldn\'t find matching products and offer to help them search differently.',
       products: [],
     };
   }
@@ -37,12 +37,12 @@ export async function handleSearchProducts(
   const productList = results
     .map((p, i) => {
       const cleanDesc = stripHtml(p.description).substring(0, 150);
-      return `${i + 1}. **${p.name}** - ${p.currency}${p.price}\n   ${cleanDesc}${cleanDesc.length >= 150 ? '...' : ''}\n   Link: ${p.url || 'N/A'}`;
+      return `${i + 1}. **${p.name}**\n   Price: ${p.currency}${p.price} (VERIFIED)\n   ${cleanDesc}${cleanDesc.length >= 150 ? '...' : ''}\n   Link: ${p.url || 'N/A'}`;
     })
     .join('\n\n');
 
   return {
-    content: `Found ${results.length} relevant products:\n\n${productList}\n\nUse this information to help the customer. Recommend products naturally based on their needs. Include product links when suggesting items.`,
+    content: `[PRODUCT CATALOG SEARCH - VERIFIED DATA]\nFound ${results.length} products from the store catalog:\n\n${productList}\n\nIMPORTANT: The prices above are VERIFIED from the catalog. Only quote these exact prices to customers.`,
     products: results.map((p) => ({
       id: p.id,
       name: p.name,
