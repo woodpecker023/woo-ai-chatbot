@@ -513,6 +513,8 @@ export async function chatRoutes(server: FastifyInstance) {
           'Access-Control-Allow-Credentials': 'true',
         });
 
+        // Errors after this point must be sent via SSE, not JSON response
+        try {
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta;
 
@@ -548,35 +550,50 @@ export async function chatRoutes(server: FastifyInstance) {
             const ragFilters = getFiltersForIntent(intentResult.intent);
 
             for (const toolCall of toolCalls) {
-              const args = JSON.parse(toolCall.function.arguments);
+              let args;
+              try {
+                args = JSON.parse(toolCall.function.arguments);
+              } catch (parseError) {
+                server.log.error({ msg: 'Failed to parse tool arguments', toolCall, parseError });
+                toolResults.push({
+                  toolCallId: toolCall.id,
+                  content: 'Error: Failed to parse tool arguments',
+                });
+                continue;
+              }
 
               let toolResult;
-              switch (toolCall.function.name) {
-                case 'search_products':
-                  toolResult = await handleSearchProducts(storeId, args, ragFilters);
-                  if (toolResult.products && toolResult.products.length > 0) {
-                    matchedProducts.push(...toolResult.products);
-                  } else {
-                    productSearchEmpty = true;
-                    searchQuery = args.query || body.message;
-                  }
-                  break;
-                case 'search_faq':
-                  toolResult = await handleSearchFaq(storeId, args, ragFilters);
-                  // Check if FAQ search returned no results
-                  if (toolResult.content.includes('No FAQ entries found')) {
-                    faqSearchEmpty = true;
-                    if (!searchQuery) searchQuery = args.query || body.message;
-                  }
-                  break;
-                case 'order_status':
-                  toolResult = await handleOrderStatus(storeId, args);
-                  break;
-                case 'create_handoff_ticket':
-                  toolResult = await handleCreateHandoff(storeId, args);
-                  break;
-                default:
-                  toolResult = { content: 'Tool not found' };
+              try {
+                switch (toolCall.function.name) {
+                  case 'search_products':
+                    toolResult = await handleSearchProducts(storeId, args, ragFilters);
+                    if (toolResult.products && toolResult.products.length > 0) {
+                      matchedProducts.push(...toolResult.products);
+                    } else {
+                      productSearchEmpty = true;
+                      searchQuery = args.query || body.message;
+                    }
+                    break;
+                  case 'search_faq':
+                    toolResult = await handleSearchFaq(storeId, args, ragFilters);
+                    // Check if FAQ search returned no results
+                    if (toolResult.content.includes('No FAQ entries found')) {
+                      faqSearchEmpty = true;
+                      if (!searchQuery) searchQuery = args.query || body.message;
+                    }
+                    break;
+                  case 'order_status':
+                    toolResult = await handleOrderStatus(storeId, args);
+                    break;
+                  case 'create_handoff_ticket':
+                    toolResult = await handleCreateHandoff(storeId, args);
+                    break;
+                  default:
+                    toolResult = { content: 'Tool not found' };
+                }
+              } catch (toolError) {
+                server.log.error({ msg: 'Tool execution failed', tool: toolCall.function.name, args, error: toolError });
+                toolResult = { content: `Error executing ${toolCall.function.name}: Unable to complete the search. Please try again.`, products: [] };
               }
 
               toolResults.push({
@@ -676,6 +693,17 @@ export async function chatRoutes(server: FastifyInstance) {
         await incrementUsage(storeId);
 
         reply.raw.end();
+        } catch (streamError) {
+          // Error occurred during streaming - send error via SSE
+          server.log.error(streamError);
+          try {
+            reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: 'An error occurred while processing your request' })}\n\n`);
+            reply.raw.end();
+          } catch {
+            // Stream might already be closed, just end it
+            reply.raw.end();
+          }
+        }
       } catch (error) {
         server.log.error(error);
         if (error instanceof ZodError) {
