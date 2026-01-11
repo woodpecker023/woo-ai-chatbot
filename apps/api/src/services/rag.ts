@@ -73,7 +73,33 @@ export function getFiltersForIntent(intent: string): SearchFilters {
 }
 
 /**
- * Search products using vector similarity with optional filtering
+ * Hybrid search weights
+ * Semantic similarity: 60%, Keyword match: 40%
+ */
+const SEMANTIC_WEIGHT = 0.6;
+const KEYWORD_WEIGHT = 0.4;
+
+/**
+ * Prepare search query for tsvector matching
+ * Converts natural language query to tsquery format
+ */
+function prepareSearchQuery(query: string): string {
+  // Split into words, remove special chars, join with OR for flexible matching
+  const words = query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 1);
+
+  if (words.length === 0) return '';
+
+  // Use :* for prefix matching (e.g., "harr" matches "harry")
+  return words.map((w) => `${w}:*`).join(' | ');
+}
+
+/**
+ * Search products using hybrid search (semantic + keyword)
+ * Combines vector similarity (60%) with full-text search (40%)
  */
 export async function searchProducts(
   storeId: string,
@@ -88,11 +114,15 @@ export async function searchProducts(
 
   const db = getDbClient();
 
-  // Generate embedding for query
+  // Generate embedding for semantic search
   const queryEmbedding = await generateEmbedding(query);
   const minSimilarity = filters?.minSimilarity ?? 0.2;
 
-  // Perform vector similarity search with similarity threshold
+  // Prepare keyword search query
+  const searchQuery = prepareSearchQuery(query);
+
+  // Perform hybrid search combining semantic and keyword scores
+  // Uses COALESCE to handle null search_vector (backward compatibility)
   const results = await db
     .select({
       id: products.id,
@@ -102,16 +132,30 @@ export async function searchProducts(
       currency: products.currency,
       url: products.url,
       imageUrl: products.imageUrl,
-      similarity: sql<number>`1 - (${products.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`,
+      semanticScore: sql<number>`1 - (${products.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`,
+      keywordScore: sql<number>`COALESCE(
+        ts_rank(search_vector, to_tsquery('simple', ${searchQuery})) * 2,
+        0
+      )`,
+      hybridScore: sql<number>`(
+        ${SEMANTIC_WEIGHT} * (1 - (${products.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)) +
+        ${KEYWORD_WEIGHT} * COALESCE(ts_rank(search_vector, to_tsquery('simple', ${searchQuery})) * 2, 0)
+      )`,
     })
     .from(products)
     .where(
       and(
         eq(products.storeId, storeId),
-        sql`1 - (${products.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector) > ${minSimilarity}`
+        sql`(
+          1 - (${products.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector) > ${minSimilarity}
+          OR (search_vector IS NOT NULL AND search_vector @@ to_tsquery('simple', ${searchQuery}))
+        )`
       )
     )
-    .orderBy(sql`${products.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
+    .orderBy(sql`(
+      ${SEMANTIC_WEIGHT} * (1 - (${products.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)) +
+      ${KEYWORD_WEIGHT} * COALESCE(ts_rank(search_vector, to_tsquery('simple', ${searchQuery})) * 2, 0)
+    ) DESC`)
     .limit(limit);
 
   return results.map((r) => ({
@@ -122,12 +166,13 @@ export async function searchProducts(
     currency: r.currency || 'USD',
     url: r.url || '',
     imageUrl: r.imageUrl || undefined,
-    similarity: r.similarity,
+    similarity: r.hybridScore, // Return hybrid score as similarity
   }));
 }
 
 /**
- * Search FAQs using vector similarity with optional category filtering
+ * Search FAQs using hybrid search (semantic + keyword) with optional category filtering
+ * Combines vector similarity (60%) with full-text search (40%)
  */
 export async function searchFaqs(
   storeId: string,
@@ -142,33 +187,52 @@ export async function searchFaqs(
 
   const db = getDbClient();
 
-  // Generate embedding for query
+  // Generate embedding for semantic search
   const queryEmbedding = await generateEmbedding(query);
   const minSimilarity = filters?.minSimilarity ?? 0.2;
 
-  // Build where conditions
-  const conditions = [
-    eq(faqs.storeId, storeId),
-    sql`1 - (${faqs.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector) > ${minSimilarity}`,
-  ];
+  // Prepare keyword search query
+  const searchQuery = prepareSearchQuery(query);
+
+  // Build base conditions
+  const baseConditions = [eq(faqs.storeId, storeId)];
 
   // Add category filter if specified
   if (filters?.faqCategories && filters.faqCategories.length > 0) {
-    conditions.push(inArray(faqs.category, filters.faqCategories));
+    baseConditions.push(inArray(faqs.category, filters.faqCategories));
   }
 
-  // Perform vector similarity search
+  // Perform hybrid search combining semantic and keyword scores
   const results = await db
     .select({
       id: faqs.id,
       question: faqs.question,
       answer: faqs.answer,
       category: faqs.category,
-      similarity: sql<number>`1 - (${faqs.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`,
+      semanticScore: sql<number>`1 - (${faqs.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`,
+      keywordScore: sql<number>`COALESCE(
+        ts_rank(search_vector, to_tsquery('simple', ${searchQuery})) * 2,
+        0
+      )`,
+      hybridScore: sql<number>`(
+        ${SEMANTIC_WEIGHT} * (1 - (${faqs.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)) +
+        ${KEYWORD_WEIGHT} * COALESCE(ts_rank(search_vector, to_tsquery('simple', ${searchQuery})) * 2, 0)
+      )`,
     })
     .from(faqs)
-    .where(and(...conditions))
-    .orderBy(sql`${faqs.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
+    .where(
+      and(
+        ...baseConditions,
+        sql`(
+          1 - (${faqs.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector) > ${minSimilarity}
+          OR (search_vector IS NOT NULL AND search_vector @@ to_tsquery('simple', ${searchQuery}))
+        )`
+      )
+    )
+    .orderBy(sql`(
+      ${SEMANTIC_WEIGHT} * (1 - (${faqs.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)) +
+      ${KEYWORD_WEIGHT} * COALESCE(ts_rank(search_vector, to_tsquery('simple', ${searchQuery})) * 2, 0)
+    ) DESC`)
     .limit(limit);
 
   return results.map((r) => ({
@@ -176,7 +240,7 @@ export async function searchFaqs(
     question: r.question,
     answer: r.answer,
     category: r.category ?? undefined,
-    similarity: r.similarity,
+    similarity: r.hybridScore, // Return hybrid score as similarity
   }));
 }
 
