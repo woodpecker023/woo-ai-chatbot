@@ -13,7 +13,19 @@ export function getDbClient(connectionString?: string): DbClient {
     if (!url) {
       throw new Error('DATABASE_URL is not set');
     }
-    client = postgres(url);
+
+    // Supabase pooler (Supavisor) uses transaction mode which requires:
+    // - prepare: false (no prepared statements in transaction mode)
+    // - max: limit connections to avoid circuit breaker errors
+    // - idle_timeout: release idle connections back to pool
+    const isSupabasePooler = url.includes('pooler.supabase.com');
+
+    client = postgres(url, {
+      prepare: isSupabasePooler ? false : true,
+      max: isSupabasePooler ? 10 : 20,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
     db = drizzle(client, { schema });
   }
   return db!;
