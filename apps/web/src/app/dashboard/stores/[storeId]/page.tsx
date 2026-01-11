@@ -29,9 +29,8 @@ import {
   Power,
   Sparkles,
   User,
-  Upload,
 } from 'lucide-react'
-import { api, ApiError, type Store, type WidgetConfig, type BotPersona, type AnalyticsOverview, type DailyMessageCount, type PopularQueriesData, type PeakHoursData, type VerifyInstallResult } from '@/lib/api'
+import { api, ApiError, type Store, type WidgetConfig, type BotPersona, type AnalyticsOverview, type DailyMessageCount, type PopularQueriesData, type PeakHoursData, type VerifyInstallResult, type ProductClicksData, type MissingDemandData } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { UsageMeter } from '@/components/UsageMeter'
 
@@ -77,6 +76,8 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
   const [messagesByDay, setMessagesByDay] = useState<DailyMessageCount[]>([])
   const [popularQueries, setPopularQueries] = useState<PopularQueriesData | null>(null)
   const [peakHours, setPeakHours] = useState<PeakHoursData | null>(null)
+  const [productClicks, setProductClicks] = useState<ProductClicksData | null>(null)
+  const [missingDemand, setMissingDemand] = useState<MissingDemandData | null>(null)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
   const [messagesDaysFilter, setMessagesDaysFilter] = useState(30)
   const [peakHoursDaysFilter, setPeakHoursDaysFilter] = useState(30)
@@ -140,17 +141,21 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
     setIsLoadingAnalytics(true)
 
     try {
-      const [overview, daily, queries, hours] = await Promise.all([
+      const [overview, daily, queries, hours, clicks, demand] = await Promise.all([
         api.getAnalyticsOverview(storeId),
         api.getMessagesByDay(storeId, messagesDaysFilter),
         api.getPopularQueries(storeId),
         api.getPeakHours(storeId, peakHoursDaysFilter),
+        api.getProductClicks(storeId, 30),
+        api.getMissingDemand(storeId, 30),
       ])
 
       setAnalyticsOverview(overview)
       setMessagesByDay(daily.data)
       setPopularQueries(queries)
       setPeakHours(hours)
+      setProductClicks(clicks)
+      setMissingDemand(demand)
     } catch (err) {
       console.error('Failed to load analytics:', err)
     } finally {
@@ -730,6 +735,163 @@ export default function StoreSettingsPage({ params }: { params: { storeId: strin
                   ) : (
                     <p className="text-sm text-gray-500">No recent questions yet.</p>
                   )}
+                </div>
+
+                {/* KPI Metrics Section */}
+                <div className="border-t border-gray-200 pt-6 mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Success Metrics (KPIs)</h3>
+
+                  {/* Product Clicks & Missing Demand Stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200">
+                      <div className="flex items-center gap-2 text-emerald-600 mb-2">
+                        <Package className="h-4 w-4" />
+                        <span className="text-xs font-medium uppercase tracking-wide">Product Clicks</span>
+                      </div>
+                      <p className="text-2xl font-bold text-emerald-900">
+                        {productClicks?.periodClicks.toLocaleString() || 0}
+                      </p>
+                      <p className="text-xs text-emerald-600 mt-1">
+                        {productClicks?.totalClicks.toLocaleString() || 0} total
+                      </p>
+                    </div>
+                    <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
+                      <div className="flex items-center gap-2 text-amber-600 mb-2">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-xs font-medium uppercase tracking-wide">Missing Demand</span>
+                      </div>
+                      <p className="text-2xl font-bold text-amber-900">
+                        {missingDemand?.periodMissing.toLocaleString() || 0}
+                      </p>
+                      <p className="text-xs text-amber-600 mt-1">
+                        unanswered queries (30d)
+                      </p>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                      <div className="flex items-center gap-2 text-blue-600 mb-2">
+                        <TrendingUp className="h-4 w-4" />
+                        <span className="text-xs font-medium uppercase tracking-wide">Click Rate</span>
+                      </div>
+                      <p className="text-2xl font-bold text-blue-900">
+                        {analyticsOverview?.overview.recentMessages && productClicks?.periodClicks
+                          ? ((productClicks.periodClicks / analyticsOverview.overview.recentMessages) * 100).toFixed(1)
+                          : 0}%
+                      </p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        clicks per message
+                      </p>
+                    </div>
+                    <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-lg p-4 border border-rose-200">
+                      <div className="flex items-center gap-2 text-rose-600 mb-2">
+                        <XCircle className="h-4 w-4" />
+                        <span className="text-xs font-medium uppercase tracking-wide">Fulfillment Gap</span>
+                      </div>
+                      <p className="text-2xl font-bold text-rose-900">
+                        {analyticsOverview?.overview.recentMessages && missingDemand?.periodMissing
+                          ? ((missingDemand.periodMissing / analyticsOverview.overview.recentMessages) * 100).toFixed(1)
+                          : 0}%
+                      </p>
+                      <p className="text-xs text-rose-600 mt-1">
+                        unfulfilled queries
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Top Clicked Products */}
+                  <div className="grid md:grid-cols-2 gap-6 mb-6">
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <Package className="h-4 w-4 text-emerald-500" />
+                        Top Clicked Products
+                      </h4>
+                      {productClicks && productClicks.topProducts.length > 0 ? (
+                        <ul className="space-y-2">
+                          {productClicks.topProducts.slice(0, 5).map((product, i) => (
+                            <li key={i} className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-gray-400 text-xs w-4">{i + 1}.</span>
+                                {product.url ? (
+                                  <a
+                                    href={product.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary-600 hover:underline truncate"
+                                  >
+                                    {product.name}
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-700 truncate">{product.name}</span>
+                                )}
+                              </div>
+                              <span className="text-gray-500 font-medium ml-2 flex-shrink-0">
+                                {product.clicks} click{product.clicks !== 1 ? 's' : ''}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-gray-500">No product clicks recorded yet.</p>
+                      )}
+                    </div>
+
+                    {/* Missing Demand Topics */}
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-500" />
+                        Missing Demand Topics
+                      </h4>
+                      {missingDemand && missingDemand.topTopics.length > 0 ? (
+                        <>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {missingDemand.topTopics.slice(0, 10).map((topic, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200"
+                              >
+                                {topic.word}
+                                <span className="text-amber-500">({topic.count})</span>
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            These topics represent customer queries that couldn't be answered - consider adding products or FAQs for these.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-500">No missing demand detected yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Recent Unanswered Queries */}
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <MessageCircle className="h-4 w-4 text-amber-500" />
+                      Recent Unanswered Customer Queries
+                    </h4>
+                    {missingDemand && missingDemand.recentQueries.length > 0 ? (
+                      <ul className="space-y-2 max-h-60 overflow-y-auto">
+                        {missingDemand.recentQueries.slice(0, 15).map((q) => (
+                          <li key={q.id} className="text-sm flex items-start gap-2 py-1 border-b border-gray-100 last:border-0">
+                            <span className={cn(
+                              "inline-flex px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0",
+                              q.type === 'product' ? "bg-blue-100 text-blue-700" :
+                              q.type === 'faq' ? "bg-purple-100 text-purple-700" :
+                              "bg-gray-100 text-gray-700"
+                            )}>
+                              {q.type === 'product' ? 'Product' : q.type === 'faq' ? 'FAQ' : 'Both'}
+                            </span>
+                            <span className="text-gray-600 flex-1">{q.query}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">
+                              {new Date(q.date).toLocaleDateString()}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-gray-500">All customer queries are being answered. Great job!</p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Refresh Button */}

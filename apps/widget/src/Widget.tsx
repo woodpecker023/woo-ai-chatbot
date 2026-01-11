@@ -28,6 +28,32 @@ interface WidgetProps {
   config: WidgetConfig
 }
 
+// Track product click
+async function trackProductClick(
+  apiUrl: string,
+  storeId: string,
+  product: Product,
+  sessionId: string
+): Promise<void> {
+  try {
+    await fetch(`${apiUrl}/stores/${storeId}/track-click`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        productId: product.id,
+        productName: product.name,
+        productUrl: product.url,
+        sessionId,
+      }),
+    })
+  } catch (error) {
+    // Silent fail - don't interrupt user experience
+    console.debug('[WooAI] Failed to track click:', error)
+  }
+}
+
 // Session management
 function getSessionId(storeId: string): string {
   const key = `wooai_session_${storeId}`
@@ -248,7 +274,11 @@ export function Widget({ config }: WidgetProps) {
                   {message.products && message.products.length > 0 && (
                     <div>
                       {message.products.map(product => (
-                        <ProductCard key={product.id} product={product} />
+                        <ProductCard
+                          key={product.id}
+                          product={product}
+                          onProductClick={() => trackProductClick(config.apiUrl, config.storeId, product, sessionId)}
+                        />
                       ))}
                     </div>
                   )}
@@ -307,7 +337,13 @@ function TypingIndicator() {
   )
 }
 
-function ProductCard({ product }: { product: Product }) {
+function ProductCard({ product, onProductClick }: { product: Product; onProductClick?: () => void }) {
+  const handleClick = () => {
+    if (onProductClick) {
+      onProductClick()
+    }
+  }
+
   return (
     <div className="wooai-product">
       {product.image && (
@@ -326,6 +362,7 @@ function ProductCard({ product }: { product: Product }) {
             target="_blank"
             rel="noopener noreferrer"
             className="wooai-product-link"
+            onClick={handleClick}
           >
             View Product
           </a>

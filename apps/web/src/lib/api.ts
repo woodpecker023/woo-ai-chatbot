@@ -220,6 +220,12 @@ export const api = {
   getPeakHours: (storeId: string, days: number = 30) =>
     request<PeakHoursData>(`/stores/${storeId}/analytics/peak-hours?days=${days}`),
 
+  getProductClicks: (storeId: string, days: number = 30) =>
+    request<ProductClicksData>(`/stores/${storeId}/analytics/product-clicks?days=${days}`),
+
+  getMissingDemand: (storeId: string, days: number = 30) =>
+    request<MissingDemandData>(`/stores/${storeId}/analytics/missing-demand?days=${days}`),
+
   // Installation Verification
   verifyInstall: (storeId: string) =>
     request<VerifyInstallResult>(`/stores/${storeId}/verify-install`, {
@@ -402,6 +408,23 @@ export interface PeakHoursData {
   hourlyData: { hour: number; count: number }[]
   peakHour: number
   peakHourCount: number
+  days: number
+}
+
+export interface ProductClicksData {
+  totalClicks: number
+  periodClicks: number
+  clicksByDay: { date: string; count: number }[]
+  topProducts: { name: string; url: string | null; clicks: number }[]
+  days: number
+}
+
+export interface MissingDemandData {
+  totalMissing: number
+  periodMissing: number
+  byType: { type: string; count: number }[]
+  recentQueries: { id: string; query: string; type: string; date: string }[]
+  topTopics: { word: string; count: number }[]
   days: number
 }
 

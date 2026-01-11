@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { getDbClient } from '@woo-ai/database';
-import { stores, faqs, products, chatSessions, chatMessages } from '@woo-ai/database';
+import { stores, faqs, products, chatSessions, chatMessages, productClicks, missingDemand } from '@woo-ai/database';
 import { eq, and, ilike, sql, desc, gte, count } from 'drizzle-orm';
 import { createStoreSchema, updateStoreSchema, createFaqSchema, generateApiKey } from '@woo-ai/shared';
 import { authenticateUser, validateStoreOwnership } from '../middleware/auth.js';
@@ -739,6 +739,256 @@ export async function storeRoutes(server: FastifyInstance) {
           domain,
         };
       }
+    },
+  });
+
+  // Track product click (public endpoint for widget)
+  server.post<{ Params: { storeId: string }; Body: { productId?: string; productName: string; productUrl?: string; sessionId?: string } }>('/:storeId/track-click', {
+    handler: async (request, reply) => {
+      const db = getDbClient();
+      const { storeId } = request.params;
+      const { productId, productName, productUrl, sessionId } = request.body as { productId?: string; productName: string; productUrl?: string; sessionId?: string };
+
+      // Verify store exists
+      const store = await db.query.stores.findFirst({
+        where: eq(stores.id, storeId),
+        columns: { id: true },
+      });
+
+      if (!store) {
+        return reply.status(404).send({ error: 'Store not found' });
+      }
+
+      // Get internal session ID if sessionId provided
+      let internalSessionId: string | undefined;
+      if (sessionId) {
+        const session = await db.query.chatSessions.findFirst({
+          where: and(
+            eq(chatSessions.storeId, storeId),
+            eq(chatSessions.sessionId, sessionId)
+          ),
+          columns: { id: true },
+        });
+        internalSessionId = session?.id;
+      }
+
+      // Insert click record
+      await db.insert(productClicks).values({
+        storeId,
+        productId: productId || undefined,
+        sessionId: internalSessionId,
+        productName,
+        productUrl,
+      });
+
+      return { success: true };
+    },
+  });
+
+  // Get product click analytics
+  server.get<{ Params: { storeId: string }; Querystring: { days?: string } }>('/:storeId/analytics/product-clicks', {
+    preHandler: [authenticateUser, validateStoreOwnership],
+    handler: async (request) => {
+      const db = getDbClient();
+      const storeId = request.params.storeId;
+      const days = Math.min(parseInt(request.query.days || '30', 10), 90);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+
+      // Get total clicks
+      const [totalClicks] = await db
+        .select({ count: count() })
+        .from(productClicks)
+        .where(eq(productClicks.storeId, storeId));
+
+      // Get clicks in period
+      const [periodClicks] = await db
+        .select({ count: count() })
+        .from(productClicks)
+        .where(
+          and(
+            eq(productClicks.storeId, storeId),
+            gte(productClicks.createdAt, startDate)
+          )
+        );
+
+      // Get clicks by day
+      const dailyClicks = await db
+        .select({
+          date: sql<string>`TO_CHAR(${productClicks.createdAt}::date, 'YYYY-MM-DD')`.as('date'),
+          count: count(),
+        })
+        .from(productClicks)
+        .where(
+          and(
+            eq(productClicks.storeId, storeId),
+            gte(productClicks.createdAt, startDate)
+          )
+        )
+        .groupBy(sql`${productClicks.createdAt}::date`)
+        .orderBy(sql`${productClicks.createdAt}::date`);
+
+      // Create a map for quick lookup
+      const dateMap = new Map<string, number>();
+      for (const d of dailyClicks) {
+        dateMap.set(d.date, Number(d.count));
+      }
+
+      // Fill in missing days with 0
+      const clicksByDay: { date: string; count: number }[] = [];
+      const today = new Date();
+      for (let i = days - 1; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        clicksByDay.push({
+          date: dateStr,
+          count: dateMap.get(dateStr) || 0,
+        });
+      }
+
+      // Get top clicked products
+      const topProducts = await db
+        .select({
+          productName: productClicks.productName,
+          productUrl: productClicks.productUrl,
+          count: count(),
+        })
+        .from(productClicks)
+        .where(
+          and(
+            eq(productClicks.storeId, storeId),
+            gte(productClicks.createdAt, startDate)
+          )
+        )
+        .groupBy(productClicks.productName, productClicks.productUrl)
+        .orderBy(desc(count()))
+        .limit(10);
+
+      return {
+        totalClicks: Number(totalClicks?.count || 0),
+        periodClicks: Number(periodClicks?.count || 0),
+        clicksByDay,
+        topProducts: topProducts.map(p => ({
+          name: p.productName,
+          url: p.productUrl,
+          clicks: Number(p.count),
+        })),
+        days,
+      };
+    },
+  });
+
+  // Get missing demand analytics
+  server.get<{ Params: { storeId: string }; Querystring: { days?: string } }>('/:storeId/analytics/missing-demand', {
+    preHandler: [authenticateUser, validateStoreOwnership],
+    handler: async (request) => {
+      const db = getDbClient();
+      const storeId = request.params.storeId;
+      const days = Math.min(parseInt(request.query.days || '30', 10), 90);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+
+      // Get total missing demand entries
+      const [totalMissing] = await db
+        .select({ count: count() })
+        .from(missingDemand)
+        .where(eq(missingDemand.storeId, storeId));
+
+      // Get missing demand in period
+      const [periodMissing] = await db
+        .select({ count: count() })
+        .from(missingDemand)
+        .where(
+          and(
+            eq(missingDemand.storeId, storeId),
+            gte(missingDemand.createdAt, startDate)
+          )
+        );
+
+      // Get missing demand by type
+      const byType = await db
+        .select({
+          queryType: missingDemand.queryType,
+          count: count(),
+        })
+        .from(missingDemand)
+        .where(
+          and(
+            eq(missingDemand.storeId, storeId),
+            gte(missingDemand.createdAt, startDate)
+          )
+        )
+        .groupBy(missingDemand.queryType);
+
+      // Get recent unanswered queries
+      const recentQueries = await db
+        .select({
+          id: missingDemand.id,
+          query: missingDemand.query,
+          queryType: missingDemand.queryType,
+          createdAt: missingDemand.createdAt,
+        })
+        .from(missingDemand)
+        .where(
+          and(
+            eq(missingDemand.storeId, storeId),
+            gte(missingDemand.createdAt, startDate)
+          )
+        )
+        .orderBy(desc(missingDemand.createdAt))
+        .limit(50);
+
+      // Simple word frequency analysis for missing demand topics
+      const wordCounts: Record<string, number> = {};
+      const stopWords = new Set([
+        'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its',
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to',
+        'for', 'of', 'with', 'is', 'are', 'was', 'were', 'be', 'been',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+        'can', 'could', 'should', 'may', 'might', 'must', 'shall',
+        'this', 'that', 'these', 'those', 'what', 'which', 'who',
+        'how', 'when', 'where', 'why', 'if', 'then', 'so', 'just',
+        'about', 'any', 'some', 'all', 'no', 'not', 'only', 'also',
+        'hi', 'hello', 'hey', 'thanks', 'thank', 'please', 'ok', 'okay',
+      ]);
+
+      for (const q of recentQueries) {
+        const words = q.query
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .split(/\s+/)
+          .filter((w) => w.length > 2 && !stopWords.has(w));
+
+        for (const word of words) {
+          wordCounts[word] = (wordCounts[word] || 0) + 1;
+        }
+      }
+
+      // Get top topics from missing demand
+      const topTopics = Object.entries(wordCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([word, count]) => ({ word, count }));
+
+      return {
+        totalMissing: Number(totalMissing?.count || 0),
+        periodMissing: Number(periodMissing?.count || 0),
+        byType: byType.map(t => ({
+          type: t.queryType,
+          count: Number(t.count),
+        })),
+        recentQueries: recentQueries.map(q => ({
+          id: q.id,
+          query: q.query,
+          type: q.queryType,
+          date: q.createdAt,
+        })),
+        topTopics,
+        days,
+      };
     },
   });
 }

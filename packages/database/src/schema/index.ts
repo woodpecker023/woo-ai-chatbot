@@ -9,3 +9,5 @@ export * from './chat-messages.js';
 export * from './subscriptions.js';
 export * from './usage-metrics.js';
 export * from './extensions.js';
+export * from './product-clicks.js';
+export * from './missing-demand.js';

@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { getDbClient } from '@woo-ai/database';
-import { chatSessions, chatMessages, stores, products, faqs } from '@woo-ai/database';
+import { chatSessions, chatMessages, stores, products, faqs, missingDemand } from '@woo-ai/database';
 import { eq, and, desc, count } from 'drizzle-orm';
 import { chatRequestSchema } from '@woo-ai/shared';
 import { authenticateWidgetRequest } from '../middleware/auth.js';
@@ -12,6 +12,12 @@ import { handleCreateHandoff } from '../tools/create-handoff.js';
 import { canSendMessage, incrementUsage } from '../services/usage.js';
 import { ZodError } from 'zod';
 import type OpenAI from 'openai';
+
+interface MissingDemandEntry {
+  query: string;
+  queryType: 'product' | 'faq' | 'both';
+  toolsCalled: string[];
+}
 
 interface StoreData {
   name: string;
@@ -222,6 +228,7 @@ export async function chatRoutes(server: FastifyInstance) {
         let assistantMessage = '';
         let toolCalls: Array<OpenAI.Chat.ChatCompletionMessageToolCall> = [];
         let matchedProducts: Array<unknown> = [];
+        let missingDemandEntries: MissingDemandEntry[] = [];
 
         // Set up streaming response with CORS headers using raw response
         const origin = request.headers.origin || '*';
@@ -259,6 +266,10 @@ export async function chatRoutes(server: FastifyInstance) {
           // Check if we're done
           if (chunk.choices[0]?.finish_reason === 'tool_calls') {
             // Execute tool calls
+            let productSearchEmpty = false;
+            let faqSearchEmpty = false;
+            let searchQuery = '';
+
             for (const toolCall of toolCalls) {
               const args = JSON.parse(toolCall.function.arguments);
 
@@ -266,12 +277,20 @@ export async function chatRoutes(server: FastifyInstance) {
               switch (toolCall.function.name) {
                 case 'search_products':
                   toolResult = await handleSearchProducts(storeId, args);
-                  if (toolResult.products) {
+                  if (toolResult.products && toolResult.products.length > 0) {
                     matchedProducts.push(...toolResult.products);
+                  } else {
+                    productSearchEmpty = true;
+                    searchQuery = args.query || body.message;
                   }
                   break;
                 case 'search_faq':
                   toolResult = await handleSearchFaq(storeId, args);
+                  // Check if FAQ search returned no results
+                  if (toolResult.content.includes('No FAQ entries found')) {
+                    faqSearchEmpty = true;
+                    if (!searchQuery) searchQuery = args.query || body.message;
+                  }
                   break;
                 case 'order_status':
                   toolResult = await handleOrderStatus(storeId, args);
@@ -284,6 +303,21 @@ export async function chatRoutes(server: FastifyInstance) {
               }
 
               assistantMessage += `\n\n${toolResult.content}`;
+            }
+
+            // Track missing demand if searches returned empty
+            if (productSearchEmpty || faqSearchEmpty) {
+              const queryType = productSearchEmpty && faqSearchEmpty
+                ? 'both'
+                : productSearchEmpty
+                  ? 'product'
+                  : 'faq';
+
+              missingDemandEntries.push({
+                query: searchQuery || body.message,
+                queryType,
+                toolsCalled: toolCalls.map(tc => tc.function.name),
+              });
             }
 
             // Send final message
@@ -306,6 +340,22 @@ export async function chatRoutes(server: FastifyInstance) {
           content: assistantMessage,
           metadata: { products: matchedProducts },
         });
+
+        // Store missing demand entries
+        if (missingDemandEntries.length > 0) {
+          for (const entry of missingDemandEntries) {
+            await db.insert(missingDemand).values({
+              storeId,
+              sessionId: session.id,
+              query: entry.query,
+              queryType: entry.queryType,
+              metadata: {
+                toolsCalled: entry.toolsCalled,
+                resultsCount: 0,
+              },
+            });
+          }
+        }
 
         // Increment usage counter
         await incrementUsage(storeId);

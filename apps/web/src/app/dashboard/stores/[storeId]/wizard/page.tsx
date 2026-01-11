@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,7 +31,6 @@ interface EditingFaq {
 
 export default function TrainingWizardPage({ params }: { params: { storeId: string } }) {
   const { storeId } = params
-  const router = useRouter()
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>('url')
@@ -41,7 +39,7 @@ export default function TrainingWizardPage({ params }: { params: { storeId: stri
   const [maxFaqs, setMaxFaqs] = useState(10)
 
   // Scanning state
-  const [isScanning, setIsScanning] = useState(false)
+  const [, setIsScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState('')
   const [scanError, setScanError] = useState('')
 
