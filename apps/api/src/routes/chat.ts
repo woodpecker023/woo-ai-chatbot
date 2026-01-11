@@ -104,6 +104,27 @@ function buildSystemPrompt(
     lines.push('- Always be honest about what you can and cannot do');
   }
 
+  // LANGUAGE DETECTION - Always included
+  lines.push('');
+  lines.push('---');
+  lines.push('LANGUAGE RULES:');
+  lines.push('- DETECT the language of the customer\'s message');
+  lines.push('- RESPOND in the SAME language the customer uses');
+  lines.push('- If customer writes in Serbian, respond in Serbian');
+  lines.push('- If customer writes in English, respond in English');
+  lines.push('- Product names can stay in their original form');
+  lines.push('- Be consistent with the language throughout the conversation');
+
+  // RESPONSE QUALITY - Always included
+  lines.push('');
+  lines.push('---');
+  lines.push('RESPONSE QUALITY RULES:');
+  lines.push('- When you receive product search results, DO NOT dump raw data');
+  lines.push('- Instead, recommend products CONVERSATIONALLY based on what the customer asked');
+  lines.push('- Highlight why specific products match their needs');
+  lines.push('- Include product links naturally in your recommendations');
+  lines.push('- If multiple products match, help them choose by explaining differences');
+
   // SECURITY BOUNDARIES - Always appended, cannot be overridden
   lines.push('');
   lines.push('---');
